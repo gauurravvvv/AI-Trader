@@ -19,16 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-────────────────────────────────────────────────────────────────────────────
-SCOPE OF THIS LICENSE
-
-This MIT license covers ONLY the original work in this repository:
-
-    docs/       LICENSE      NOTICE.md
-    scripts/    README.md    .gitignore
-
-It does NOT cover anything under `reference/`. Each directory there is an
-unmodified third-party copy that remains under its own upstream license,
-reproduced in full inside that directory. See NOTICE.md.
-────────────────────────────────────────────────────────────────────────────

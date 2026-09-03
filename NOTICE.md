@@ -1,5 +1,20 @@
 # Third-Party Notices
 
+## Scope of the MIT license
+
+The MIT license in [LICENSE](LICENSE) covers **only** the original work in this
+repository:
+
+```
+docs/    scripts/    README.md    LICENSE    NOTICE.md    .gitignore
+```
+
+It does **not** cover anything under `reference/`. Every directory there is an
+unmodified third-party copy that remains under its own upstream license,
+reproduced in full inside that directory.
+
+---
+
 Everything under `reference/` is an **unmodified upstream copy**, vendored for
 reading only. Each retains its own license, reproduced in full inside its own
 directory. None of it is imported, linked, or compiled into any original work in
