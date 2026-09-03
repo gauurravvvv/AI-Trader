@@ -21,6 +21,18 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/agents:
+    dependencies:
+      '@aegis/budget':
+        specifier: workspace:*
+        version: link:../budget
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aegis/logger':
+        specifier: workspace:*
+        version: link:../logger
+
   packages/budget:
     dependencies:
       '@aegis/db':
