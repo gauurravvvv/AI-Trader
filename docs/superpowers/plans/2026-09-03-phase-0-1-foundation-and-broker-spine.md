@@ -540,7 +540,23 @@ export function getDb(url: string) {
 export type Db = ReturnType<typeof getDb>;
 ```
 
-- [ ] **Step 5: Generate and apply the migration**
+- [ ] **Step 5: Add the drizzle config, then generate and apply the migration**
+
+```typescript
+// packages/db/drizzle.config.ts
+import { defineConfig } from 'drizzle-kit';
+
+export default defineConfig({
+  schema: './src/schema.ts',
+  out: './migrations',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: process.env.DATABASE_URL ?? 'postgres://aegis:aegis@localhost:5432/aegis',
+  },
+  strict: true,
+  verbose: true,
+});
+```
 
 ```bash
 pnpm --filter @aegis/db exec drizzle-kit generate
