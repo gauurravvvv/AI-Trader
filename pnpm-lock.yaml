@@ -26,6 +26,12 @@ importers:
       '@aegis/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@aegis/alpha':
+        specifier: workspace:*
+        version: link:../../packages/alpha
+      '@aegis/brokers':
+        specifier: workspace:*
+        version: link:../../packages/brokers
       '@aegis/budget':
         specifier: workspace:*
         version: link:../../packages/budget
@@ -38,9 +44,24 @@ importers:
       '@aegis/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@aegis/edgar':
+        specifier: workspace:*
+        version: link:../../packages/edgar
+      '@aegis/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@aegis/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@aegis/marketdata':
+        specifier: workspace:*
+        version: link:../../packages/marketdata
+      '@aegis/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
+      '@aegis/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -151,6 +172,42 @@ importers:
       yahoo-finance2:
         specifier: ^3.15.4
         version: 3.15.4
+
+  packages/pipeline:
+    dependencies:
+      '@aegis/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@aegis/alpha':
+        specifier: workspace:*
+        version: link:../alpha
+      '@aegis/budget':
+        specifier: workspace:*
+        version: link:../budget
+      '@aegis/claude':
+        specifier: workspace:*
+        version: link:../claude
+      '@aegis/config':
+        specifier: workspace:*
+        version: link:../config
+      '@aegis/edgar':
+        specifier: workspace:*
+        version: link:../edgar
+      '@aegis/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@aegis/marketdata':
+        specifier: workspace:*
+        version: link:../marketdata
+      '@aegis/risk':
+        specifier: workspace:*
+        version: link:../risk
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
 
   packages/risk:
     dependencies:

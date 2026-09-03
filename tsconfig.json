@@ -39,6 +39,9 @@
     },
     {
       "path": "./packages/alpha"
+    },
+    {
+      "path": "./packages/pipeline"
     }
   ]
 }

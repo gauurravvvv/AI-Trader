@@ -25,6 +25,27 @@
     },
     {
       "path": "../../packages/claude"
+    },
+    {
+      "path": "../../packages/brokers"
+    },
+    {
+      "path": "../../packages/marketdata"
+    },
+    {
+      "path": "../../packages/ledger"
+    },
+    {
+      "path": "../../packages/risk"
+    },
+    {
+      "path": "../../packages/edgar"
+    },
+    {
+      "path": "../../packages/alpha"
+    },
+    {
+      "path": "../../packages/pipeline"
     }
   ]
 }
