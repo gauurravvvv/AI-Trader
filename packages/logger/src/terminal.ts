@@ -10,7 +10,9 @@ const PAINT: Record<Kind, (s: string) => string> = {
   error: pc.red,
   llm: pc.magenta,
 };
-const AGENT_COL = 16;
+// Wide enough for the longest agent name. Truncating a name makes the log
+// ungreppable — "position-guardia" matches nothing you would think to search.
+const AGENT_COL = 18;
 
 /**
  * Local time, not UTC. The operator is watching their own machine and reasoning

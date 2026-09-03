@@ -32,7 +32,8 @@ export abstract class BaseAgent {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private enabled = true;
-  private lastTickAt = 0;
+  /** When the PREVIOUS tick finished, not when it started. */
+  private lastTickEndedAt = 0;
   private readonly s = { runs: 0, skipped: 0, errors: 0, lastRun: 0 };
 
   constructor(
@@ -60,15 +61,21 @@ export abstract class BaseAgent {
     try {
       const now = this.now();
       // A laptop lid closing mid-session is a real failure mode: timers do not
-      // fire while suspended, and the first tick after wake carries stale
-      // state. Detect the gap explicitly rather than acting on stale data.
-      if (this.lastTickAt > 0 && now - this.lastTickAt > this.opts.intervalMs * 2.5) {
-        const mins = Math.round((now - this.lastTickAt) / 60_000);
+      // fire while suspended, and the first tick after wake carries stale state.
+      //
+      // Measured from the END of the previous tick, not its start. Measuring
+      // start-to-start reports a false wake every time execute() runs longer
+      // than the interval — an 85s model call on a 60s ticker looked exactly
+      // like a suspended machine.
+      if (
+        this.lastTickEndedAt > 0 &&
+        now - this.lastTickEndedAt > this.opts.intervalMs * 2.5
+      ) {
+        const mins = Math.round((now - this.lastTickEndedAt) / 60_000);
         this.log.warn(this.name, `resumed after a ${String(mins)}m gap (system sleep?)`);
         this.writeLog('wake_recovery', null, `gap ${String(mins)}m`);
         await this.onWake();
       }
-      this.lastTickAt = now;
 
       if (!this.shouldRun()) {
         this.s.skipped++;
@@ -84,6 +91,7 @@ export abstract class BaseAgent {
       this.log.error(this.name, msg);
       this.writeLog('error', null, msg);
     } finally {
+      this.lastTickEndedAt = this.now();
       this.running = false;
     }
   }
@@ -96,7 +104,7 @@ export abstract class BaseAgent {
   start(): void {
     this.log.ok(this.name, `started · every ${String(Math.round(this.opts.intervalMs / 1000))}s`);
     this.writeLog('started', null, `interval=${String(this.opts.intervalMs)}ms`);
-    this.lastTickAt = this.now();
+    this.lastTickEndedAt = this.now();
     void this.tick();
     this.timer = setInterval(() => {
       void this.tick();

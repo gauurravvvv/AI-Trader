@@ -1,10 +1,42 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist" },
-  "include": ["src/**/*"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
   "references": [
-    { "path": "../agents" }, { "path": "../alpha" }, { "path": "../budget" },
-    { "path": "../claude" }, { "path": "../config" }, { "path": "../edgar" },
-    { "path": "../logger" }, { "path": "../marketdata" }, { "path": "../risk" }
+    {
+      "path": "../agents"
+    },
+    {
+      "path": "../alpha"
+    },
+    {
+      "path": "../budget"
+    },
+    {
+      "path": "../claude"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../edgar"
+    },
+    {
+      "path": "../logger"
+    },
+    {
+      "path": "../marketdata"
+    },
+    {
+      "path": "../risk"
+    },
+    {
+      "path": "../ledger"
+    }
   ]
 }

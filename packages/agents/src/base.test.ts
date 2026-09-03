@@ -89,6 +89,22 @@ describe('BaseAgent', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('does not report a wake gap when execute() simply ran long', async () => {
+    // An 85s model call on a 60s ticker is slow work, not a suspended laptop.
+    // Measuring start-to-start would flag it every time.
+    let t = 1_000_000;
+    const d = deps(() => t);
+    class Slow extends BaseAgent {
+      constructor(x: AgentDeps) { super('slow', { intervalMs: 60_000 }, x); }
+      async execute(): Promise<void> { t += 85_000; }
+    }
+    const s = new Slow(d);
+    await s.tick();
+    await s.tick();
+    const rows = d.db.prepare("SELECT * FROM agent_logs WHERE action = 'wake_recovery'").all();
+    expect(rows).toHaveLength(0);
+  });
+
   it('does not log a wake recovery for a normal interval', async () => {
     let t = 1_000_000;
     const d = deps(() => t);

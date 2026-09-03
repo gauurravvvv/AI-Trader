@@ -4,3 +4,5 @@ export { EdgarPollerAgent, EarningsReaderAgent } from './agents.js';
 export type { PipelineDeps } from './agents.js';
 export { universeFor, edgarWatchable, US_UNIVERSE, CRYPTO_UNIVERSE, IN_UNIVERSE } from './universe.js';
 export type { UniverseEntry } from './universe.js';
+export { PositionGuardianAgent, evaluateExit, DRIFT_EXIT } from './guardian.js';
+export type { ExitRule, ExitReason, ExitDecision } from './guardian.js';

@@ -44,6 +44,8 @@ export function setHalt(db: Db, halted: boolean, reason?: string): void {
 }
 
 export class OrderRouter {
+  /** The venue this router trades. Read by agents that query per-venue state. */
+  readonly venue: string;
   private readonly db: Db;
   private readonly adapter: BrokerAdapter;
   private readonly ledger: Ledger;
@@ -55,6 +57,7 @@ export class OrderRouter {
     this.adapter = deps.adapter;
     this.ledger = deps.ledger;
     this.limits = deps.limits ?? DEFAULT_LIMITS;
+    this.venue = deps.adapter.venue;
   }
 
   /** Subscribe to venue fills and apply them to the ledger. */

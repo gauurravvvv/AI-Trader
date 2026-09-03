@@ -59,6 +59,9 @@ importers:
       '@aegis/marketdata':
         specifier: workspace:*
         version: link:../../packages/marketdata
+      '@aegis/notify':
+        specifier: workspace:*
+        version: link:../../packages/notify
       '@aegis/pipeline':
         specifier: workspace:*
         version: link:../../packages/pipeline
@@ -185,6 +188,15 @@ importers:
         specifier: ^3.15.4
         version: 3.15.4
 
+  packages/notify:
+    dependencies:
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aegis/logger':
+        specifier: workspace:*
+        version: link:../logger
+
   packages/pipeline:
     dependencies:
       '@aegis/agents':
@@ -205,6 +217,9 @@ importers:
       '@aegis/edgar':
         specifier: workspace:*
         version: link:../edgar
+      '@aegis/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       '@aegis/logger':
         specifier: workspace:*
         version: link:../logger

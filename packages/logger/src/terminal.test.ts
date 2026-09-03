@@ -26,6 +26,12 @@ describe('formatLine', () => {
     expect(a.indexOf('✓')).toBe(b.indexOf('✓'));
   });
 
+  it('does not truncate the longest agent name', () => {
+    const name = 'position-guardian';
+    const s = formatLine({ at, agent: name, kind: 'ok', msg: 'x', colour: false });
+    expect(s).toContain(name);
+  });
+
   it('uses a distinct glyph for every kind', () => {
     const marks = (['event', 'ok', 'warn', 'error', 'llm'] as const).map((k) => {
       const line = formatLine({ at, agent: 'a', kind: k, msg: 'm', colour: false });

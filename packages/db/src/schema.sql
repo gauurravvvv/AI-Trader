@@ -159,3 +159,17 @@ CREATE TABLE IF NOT EXISTS system_state (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO system_state (id, halted) VALUES (1, 0);
+
+-- ── Phase 7: notifications (outbox pattern) ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',   -- pending | sent | dead
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  sent_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_notif_pending ON notifications (status, id);

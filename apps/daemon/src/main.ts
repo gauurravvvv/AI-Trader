@@ -10,9 +10,11 @@ import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
 import { EdgarClient } from '@aegis/edgar';
 import { Dashboard } from '@aegis/dashboard';
+import { Notifier, ConsoleTransport, fillBody } from '@aegis/notify';
 import {
   EdgarPollerAgent,
   EarningsReaderAgent,
+  PositionGuardianAgent,
   universeFor,
   type PipelineDeps,
 } from '@aegis/pipeline';
@@ -51,12 +53,31 @@ const adapter = new SimAdapter(
 );
 
 const ledger = new Ledger(db);
+
+// Console transport by default: the system must be fully runnable with no email
+// provider configured, and a missing SMTP account must not silently disable the
+// record of what was decided. Set NOTIFY_TO with a real transport to send.
+const notifier = new Notifier({
+  db,
+  log,
+  transport: new ConsoleTransport(log),
+  to: process.env.NOTIFY_TO ?? 'operator@localhost',
+});
+const stopNotifier = notifier.start(15_000);
+
 const router = new OrderRouter({
   db,
   adapter,
   ledger,
   onFill: (f) => {
     log.ok('execution', `FILLED ${f.side} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`);
+    notifier.enqueue({
+      kind: 'ORDER_FILLED',
+      subject: `${f.side.toUpperCase()} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`,
+      body: fillBody({
+        symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, fee: f.fee,
+      }),
+    });
   },
 });
 router.start();
@@ -64,6 +85,11 @@ router.start();
 const reconciler = new Reconciler(ledger, adapter, db);
 reconciler.onBreak((r) => {
   log.error('reconciler', `BREAK on ${adapter.venue}: ${JSON.stringify(r.breaks)}`);
+  notifier.enqueue({
+    kind: 'RECONCILIATION_BREAK',
+    subject: `Reconciliation break on ${adapter.venue}`,
+    body: `The ledger and the venue disagree.\n\n${JSON.stringify(r.breaks, null, 2)}`,
+  });
 });
 const stopReconciler = reconciler.start(60_000);
 
@@ -87,6 +113,9 @@ const pipelineDeps: PipelineDeps = {
 const orchestrator = new Orchestrator(log);
 orchestrator.register(new EdgarPollerAgent(pipelineDeps), 0);
 orchestrator.register(new EarningsReaderAgent(pipelineDeps), 10_000);
+// Runs regardless of budget tier: the Governor may stop us opening a position,
+// it must never stop us closing one.
+orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 20_000);
 
 const dashboard = new Dashboard({
   db,
@@ -96,6 +125,11 @@ const dashboard = new Dashboard({
   venue: adapter.venue,
   onHaltChange: (h) => {
     log.warn('dashboard', h ? 'KILL SWITCH ENGAGED from the dashboard' : 'halt cleared');
+    notifier.enqueue({
+      kind: 'KILL_SWITCH',
+      subject: h ? 'Aegis HALTED' : 'Aegis halt cleared',
+      body: h ? 'The kill switch was engaged from the dashboard.' : 'Trading may resume.',
+    });
   },
 });
 dashboard.start();
@@ -141,6 +175,8 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     shuttingDown = true;
     log.warn('daemon', `${sig} received — stopping agents`);
     stopHeartbeat();
+    stopNotifier();
+    void notifier.drain();
     clearInterval(dashTimer);
     dashboard.stop();
     stopReconciler();

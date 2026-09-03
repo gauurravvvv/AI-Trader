@@ -45,6 +45,9 @@
     },
     {
       "path": "./packages/dashboard"
+    },
+    {
+      "path": "./packages/notify"
     }
   ]
 }

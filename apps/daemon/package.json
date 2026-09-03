@@ -19,6 +19,7 @@
     "@aegis/edgar": "workspace:*",
     "@aegis/pipeline": "workspace:*",
     "@aegis/alpha": "workspace:*",
-    "@aegis/dashboard": "workspace:*"
+    "@aegis/dashboard": "workspace:*",
+    "@aegis/notify": "workspace:*"
   }
 }
