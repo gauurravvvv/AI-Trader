@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatLine, formatLlm, formatBudget } from './terminal.js';
+import { formatLine, formatLlm, formatBudget, formatCost } from './terminal.js';
 
 const at = new Date('2026-09-03T14:32:07Z');
 const ESC = String.fromCharCode(27);
@@ -57,8 +57,28 @@ describe('formatLlm', () => {
     expect(s).toContain('sonnet');
     expect(s).toContain('18,412');
     expect(s).toContain('1,203');
-    expect(s).toContain('$0.086');
+    expect(s).toContain('$0.0860');
     expect(s).toContain('11.4s');
+  });
+});
+
+describe('formatCost', () => {
+  it('does not round a sub-cent haiku call away to $0.000', () => {
+    // 107 in / 67 out on haiku = $0.000442. Three decimals renders that as
+    // "$0.000", which reads as free.
+    expect(formatCost('0.000442')).toBe('$0.000442');
+  });
+
+  it('uses four decimals in the sub-dollar range', () => {
+    expect(formatCost('0.0864')).toBe('$0.0864');
+  });
+
+  it('uses two decimals for dollar amounts', () => {
+    expect(formatCost('19.4')).toBe('$19.40');
+  });
+
+  it('renders exact zero plainly', () => {
+    expect(formatCost('0')).toBe('$0');
   });
 });
 

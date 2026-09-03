@@ -41,6 +41,9 @@ importers:
       '@aegis/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
 
   packages/agents:
     dependencies:

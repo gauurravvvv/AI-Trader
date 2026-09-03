@@ -23,6 +23,19 @@ const hhmmss = (d: Date): string =>
     .join(':');
 const num = (n: number): string => n.toLocaleString('en-US');
 
+/**
+ * Haiku calls routinely cost a few ten-thousandths of a dollar. Fixed 3-dp
+ * rounds those to "$0.000", which reads as free and hides the accumulation
+ * that actually drains a $100 monthly cap.
+ */
+export function formatCost(usd: string): string {
+  const n = Number(usd);
+  if (n === 0) return '$0';
+  if (n < 0.001) return `$${n.toFixed(6)}`;
+  if (n < 1) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
 export function formatLine(o: {
   at: Date;
   agent: string;
@@ -48,7 +61,7 @@ export function formatLlm(o: {
 }): string {
   const msg =
     `${o.model}  in ${num(o.tokensIn)}  out ${num(o.tokensOut)}  ` +
-    `$${Number(o.costUsd).toFixed(3)}  ${(o.latencyMs / 1000).toFixed(1)}s`;
+    `${formatCost(o.costUsd)}  ${(o.latencyMs / 1000).toFixed(1)}s`;
   return formatLine({ at: o.at, agent: o.agent, kind: 'llm', msg, colour: o.colour });
 }
 

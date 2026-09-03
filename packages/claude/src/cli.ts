@@ -9,6 +9,12 @@ export interface AskOpts {
 }
 
 export interface ClaudeResult {
+  /**
+   * The model that actually produced this result. Carried on the result so the
+   * budget ledger cannot be handed a different model than the one invoked —
+   * hand-typing `model: 'haiku'` next to a sonnet call mis-prices it by 3x.
+   */
+  model: ModelId;
   text: string;
   tokensIn: number;
   tokensOut: number;
@@ -77,6 +83,7 @@ export async function askClaude(prompt: string, opts: AskOpts): Promise<ClaudeRe
     const tokensIn = estimateTokens(prompt);
     const tokensOut = estimateTokens(text);
     return {
+      model: opts.model,
       text,
       tokensIn,
       tokensOut,

@@ -10,6 +10,7 @@
     "@aegis/logger": "workspace:*",
     "@aegis/budget": "workspace:*",
     "@aegis/agents": "workspace:*",
-    "@aegis/claude": "workspace:*"
+    "@aegis/claude": "workspace:*",
+    "zod": "^3.23.8"
   }
 }

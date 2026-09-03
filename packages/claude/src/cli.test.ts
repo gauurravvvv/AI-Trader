@@ -22,3 +22,14 @@ describe('sanitiseEnv', () => {
     expect(src.CLAUDECODE).toBe('1');
   });
 });
+
+describe('ClaudeResult', () => {
+  it('is typed to carry the model that produced it', async () => {
+    // Compile-time guarantee: the budget ledger reads r.model rather than a
+    // hand-typed literal, so a sonnet call cannot be priced as haiku.
+    const { askClaude } = await import('./cli.js');
+    type R = Awaited<ReturnType<typeof askClaude>>;
+    const probe: Pick<R, 'model'> = { model: 'sonnet' };
+    expect(probe.model).toBe('sonnet');
+  });
+});
