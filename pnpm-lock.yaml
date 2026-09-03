@@ -21,6 +21,15 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/budget:
+    dependencies:
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
+
   packages/claude:
     dependencies:
       decimal.js:
