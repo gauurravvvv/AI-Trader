@@ -1,5 +1,13 @@
 # Phase 0–1: Foundation & Broker Spine Implementation Plan
 
+> ### ⚠️ SUPERSEDED — 2026-09-03
+> Replaced by **[`2026-09-03-phase-0-2-runtime-foundation.md`](2026-09-03-phase-0-2-runtime-foundation.md)**.
+> This version assumed the Anthropic API with a key, Postgres + Drizzle + Redis, and Docker Compose.
+> The system now runs on the local `claude -p` CLI against a metered credit pool, with SQLite and no
+> external services. Kept for the `BrokerAdapter` conformance-suite and lot-accounting-ledger designs,
+> which carry forward into Phase 3 largely unchanged.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the monorepo with a provably-enforced paper-only invariant, then build the broker spine — one `BrokerAdapter` interface, a Binance-testnet implementation, a lot-accounting position ledger, and reconciliation — so a hand-placed order round-trips and reconciles before any agent exists.
