@@ -1,0 +1,410 @@
+<title>Aegis Trading Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* ── Greenbar ledger palette. Light is the base; dark redefines tokens only. ── */
+:root {
+  --paper:  #F3F5F1;   /* the white row of continuous greenbar form paper */
+  --bar:    #E4EDE2;   /* the pale green stripe */
+  --sunk:   #EAEEE7;   /* recessed surface */
+  --ink:    #17211D;   /* green-biased ink black */
+  --ink-2:  #4A5750;   /* secondary */
+  --ink-3:  #77837B;   /* tertiary / captions */
+  --rule:   #C3CEBF;
+  --rule-2: #DBE2D7;
+  --accent: #1D4E6B;   /* ledger ink blue */
+  --flag:   #96322C;   /* traditional ledger red — reject / halt only */
+  --ok:     #2F6B43;
+
+  --measure: 68ch;
+  --step--1: clamp(.78rem, .76rem + .1vw, .84rem);
+  --step-0:  clamp(1rem, .97rem + .14vw, 1.075rem);
+  --step-1:  clamp(1.2rem, 1.13rem + .32vw, 1.4rem);
+  --step-2:  clamp(1.5rem, 1.36rem + .6vw, 1.95rem);
+  --step-3:  clamp(2rem, 1.7rem + 1.3vw, 3rem);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:  #131A17;
+    --bar:    #1B2521;
+    --sunk:   #182120;
+    --ink:    #E4EAE2;
+    --ink-2:  #A9B5AD;
+    --ink-3:  #7E8C84;
+    --rule:   #2E3B35;
+    --rule-2: #232E29;
+    --accent: #7FB2CE;
+    --flag:   #D98B84;
+    --ok:     #6FB98A;
+  }
+}
+:root[data-theme="dark"] {
+  --paper:  #131A17;
+  --bar:    #1B2521;
+  --sunk:   #182120;
+  --ink:    #E4EAE2;
+  --ink-2:  #A9B5AD;
+  --ink-3:  #7E8C84;
+  --rule:   #2E3B35;
+  --rule-2: #232E29;
+  --accent: #7FB2CE;
+  --flag:   #D98B84;
+  --ok:     #6FB98A;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 var(--step-0)/1.65 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 100%; overflow-x: hidden; }
+.col {
+  max-width: var(--measure);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+.col--wide { max-width: 92ch; }
+
+h1, h2, h3 { font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: var(--step-3); line-height: 1.04; letter-spacing: -.015em; }
+h2 { font-size: var(--step-2); line-height: 1.12; letter-spacing: -.01em; }
+h3 { font-size: var(--step-1); line-height: 1.25; }
+p  { margin: 0; }
+
+.mono, .lbl, code, td.num, th.num {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.lbl {
+  font-size: .68rem; font-weight: 500; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+/* ── Masthead ─────────────────────────────────────────────── */
+.mast { border-bottom: 2px solid var(--ink); padding-block: 3.5rem 1.25rem; }
+.mast .col { display: flex; flex-direction: column; gap: 1.1rem; }
+.mast h1 .sub {
+  display: block; font-family: "IBM Plex Sans", sans-serif; font-weight: 400;
+  font-size: var(--step-0); color: var(--ink-2); line-height: 1.55;
+  margin-top: .9rem; max-width: 54ch;
+}
+.stamp {
+  display: inline-flex; align-items: center; gap: .55rem; align-self: flex-start;
+  font-family: "IBM Plex Mono", monospace; font-size: .7rem; font-weight: 600;
+  letter-spacing: .13em; text-transform: uppercase;
+  color: var(--flag); border: 1.5px solid var(--flag);
+  padding: .4rem .7rem; border-radius: 2px;
+}
+.stamp::before { content: ""; width: .45rem; height: .45rem; background: var(--flag); border-radius: 50%; }
+
+/* ── Bands ────────────────────────────────────────────────── */
+.band { padding-block: 3.25rem; border-bottom: 1px solid var(--rule); }
+.band--bar { background: var(--bar); }
+.band > .col > * + * { margin-top: 1.5rem; }
+.band > .col--wide > * + * { margin-top: 1.5rem; }
+.eyebrow { display: flex; align-items: baseline; gap: .9rem; }
+.eyebrow .rule { flex: 1; height: 1px; background: var(--rule); }
+
+/* ── Figure ───────────────────────────────────────────────── */
+figure { margin: 0; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; }
+figcaption { font-size: var(--step--1); color: var(--ink-3); margin-top: .9rem; line-height: 1.55; }
+.scroll { overflow-x: auto; }
+
+/* ── Tables: greenbar zebra ───────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+caption { text-align: left; font-size: var(--step--1); color: var(--ink-3); padding-bottom: .6rem; }
+th {
+  text-align: left; font-family: "IBM Plex Mono", monospace; font-weight: 600;
+  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+  padding: .5rem .7rem; border-bottom: 1.5px solid var(--ink);
+  white-space: nowrap;
+}
+td { padding: .6rem .7rem; border-bottom: 1px solid var(--rule-2); vertical-align: top; line-height: 1.5; }
+tbody tr:nth-child(odd) { background: color-mix(in srgb, var(--bar) 55%, transparent); }
+.band--bar tbody tr:nth-child(odd) { background: color-mix(in srgb, var(--paper) 45%, transparent); }
+td.num, th.num { text-align: right; }
+td strong { font-weight: 600; }
+.tag {
+  font-family: "IBM Plex Mono", monospace; font-size: .66rem; font-weight: 600;
+  letter-spacing: .06em; padding: .12rem .4rem; border-radius: 2px; white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.tag--llm  { color: var(--accent); }
+.tag--code { color: var(--ok); }
+.tag--gate { color: var(--flag); }
+
+/* ── Callout ──────────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--flag);
+  background: var(--sunk);
+  padding: 1.15rem 1.35rem;
+  display: flex; flex-direction: column; gap: .7rem;
+}
+.note .lbl { color: var(--flag); }
+.note p { font-size: var(--step--1); line-height: 1.6; color: var(--ink-2); }
+.note p strong { color: var(--ink); font-weight: 600; }
+
+/* ── Phase ledger ─────────────────────────────────────────── */
+.phase { display: grid; grid-template-columns: 2.6rem 1fr; gap: 0 1rem; align-items: baseline; }
+.phase + .phase { border-top: 1px solid var(--rule-2); padding-top: .85rem; margin-top: .85rem; }
+.phase .n { font-family: "IBM Plex Mono", monospace; font-size: .8rem; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.phase h3 { font-size: 1.02rem; font-family: "IBM Plex Sans", sans-serif; font-weight: 600; }
+.phase .gate { font-size: var(--step--1); color: var(--ink-2); margin-top: .2rem; }
+.phase .gate b { font-family: "IBM Plex Mono", monospace; font-size: .68rem; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; }
+
+/* ── Footer ───────────────────────────────────────────────── */
+footer { padding-block: 2.75rem 4rem; }
+footer .col { display: flex; flex-direction: column; gap: .6rem; }
+footer p { font-size: var(--step--1); color: var(--ink-3); }
+.files { display: grid; gap: .35rem; margin-top: .5rem; }
+.files a { font-family: "IBM Plex Mono", monospace; font-size: var(--step--1); }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="col col--wide">
+    <span class="lbl">Multi-agent research platform &middot; planning complete</span>
+    <h1>Aegis Trading Desk
+      <span class="sub">A team of Claude agents researches US equities, Indian equities and crypto around the clock, argues each idea from both sides, audits its own reasoning, and places the result against paper accounts — logging every step so the whole thing can be scored.</span>
+    </h1>
+    <span class="stamp">Paper money only</span>
+  </div>
+</header>
+
+<!-- THESIS -->
+<section class="band">
+  <div class="col col--wide">
+    <div class="eyebrow"><span class="lbl">The organising idea</span><span class="rule"></span></div>
+    <h2>Intelligence goes down as you approach the money</h2>
+    <p>Every tier in this system is less clever and more deterministic than the one before it. That gradient is deliberate. An agent that invents a support level costs you a mediocre entry. An agent that invents a position limit costs you the account — so position limits are ordinary code with ordinary tests, and no language model is anywhere near them.</p>
+    <p>Two components can stop a trade outright. The <strong>Auditor</strong> scores the reasoning itself, not the stock, and refuses to pass anything below its confidence floor. The <strong>Risk Officer</strong> checks the hard caps and is the only component in the system that can say no and mean it.</p>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section class="band band--bar">
+  <div class="col col--wide">
+    <div class="eyebrow"><span class="lbl">How one decision is made</span><span class="rule"></span></div>
+    <figure>
+      <div class="scroll">
+      <svg viewBox="0 0 760 610" role="img" aria-label="Pipeline for a single trading decision: a shared context packet fans out to five parallel analysts, whose reports feed a bull-versus-bear debate and a risk debate; the Auditor can terminate the cycle; an execution planner and portfolio manager follow; then, across a marked boundary, a deterministic risk officer can reject the order before the router sends it to a paper venue.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-stop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#96322C"/>
+          </marker>
+        </defs>
+        <g fill="none" stroke="currentColor" stroke-width="1.25" font-family="IBM Plex Mono, monospace">
+
+          <!-- trigger -->
+          <rect x="300" y="8" width="160" height="30" rx="2"/>
+          <text x="380" y="28" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Trigger → Triage</text>
+          <line x1="380" y1="38" x2="380" y2="60" marker-end="url(#ar)"/>
+
+          <!-- context packet -->
+          <rect x="252" y="60" width="256" height="34" rx="2" stroke-width="1.75"/>
+          <text x="380" y="76" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">ContextPacket</text>
+          <text x="380" y="88" text-anchor="middle" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">built once · cached · provenance on every number</text>
+
+          <!-- fan out -->
+          <line x1="380" y1="94" x2="380" y2="108"/>
+          <line x1="52" y1="108" x2="708" y2="108"/>
+          <line x1="52"  y1="108" x2="52"  y2="126" marker-end="url(#ar)"/>
+          <line x1="216" y1="108" x2="216" y2="126" marker-end="url(#ar)"/>
+          <line x1="380" y1="108" x2="380" y2="126" marker-end="url(#ar)"/>
+          <line x1="544" y1="108" x2="544" y2="126" marker-end="url(#ar)"/>
+          <line x1="708" y1="108" x2="708" y2="126" marker-end="url(#ar)"/>
+
+          <rect x="8"   y="126" width="88" height="42" rx="2"/>
+          <rect x="172" y="126" width="88" height="42" rx="2"/>
+          <rect x="336" y="126" width="88" height="42" rx="2"/>
+          <rect x="500" y="126" width="88" height="42" rx="2"/>
+          <rect x="664" y="126" width="88" height="42" rx="2"/>
+          <g font-size="11" fill="currentColor" stroke="none" text-anchor="middle">
+            <text x="52"  y="145">Technical</text><text x="52"  y="159" font-size="9" opacity=".65">trend · vol</text>
+            <text x="216" y="145">Fundamental</text><text x="216" y="159" font-size="9" opacity=".65">moat · value</text>
+            <text x="380" y="145">Sentiment</text><text x="380" y="159" font-size="9" opacity=".65">flow · tone</text>
+            <text x="544" y="145">News</text><text x="544" y="159" font-size="9" opacity=".65">catalysts</text>
+            <text x="708" y="145">Macro</text><text x="708" y="159" font-size="9" opacity=".65">regime</text>
+          </g>
+
+          <!-- fan in -->
+          <line x1="52"  y1="168" x2="52"  y2="186"/>
+          <line x1="216" y1="168" x2="216" y2="186"/>
+          <line x1="380" y1="168" x2="380" y2="186"/>
+          <line x1="544" y1="168" x2="544" y2="186"/>
+          <line x1="708" y1="168" x2="708" y2="186"/>
+          <line x1="52" y1="186" x2="708" y2="186"/>
+          <text x="380" y="200" text-anchor="middle" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">5 scored reports</text>
+          <line x1="380" y1="204" x2="380" y2="222" marker-end="url(#ar)"/>
+
+          <!-- debates -->
+          <rect x="196" y="222" width="368" height="38" rx="2"/>
+          <text x="380" y="240" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Bull ⇄ Bear debate</text>
+          <text x="380" y="253" text-anchor="middle" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">alternating, 4 turns, concessions required</text>
+          <line x1="380" y1="260" x2="380" y2="278" marker-end="url(#ar)"/>
+
+          <rect x="196" y="278" width="368" height="38" rx="2"/>
+          <text x="380" y="296" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Risk trio debate</text>
+          <text x="380" y="309" text-anchor="middle" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">aggressive → conservative → neutral · argues size, not direction</text>
+          <line x1="380" y1="316" x2="380" y2="334" marker-end="url(#ar)"/>
+
+          <!-- auditor -->
+          <rect x="248" y="334" width="264" height="42" rx="2" stroke="#96322C" stroke-width="1.75"/>
+          <text x="380" y="352" text-anchor="middle" font-size="12.5" fill="#96322C" stroke="none" font-weight="600">AUDITOR</text>
+          <text x="380" y="366" text-anchor="middle" font-size="9.5" fill="#96322C" stroke="none" opacity=".85">scores the reasoning 0–100, not the stock</text>
+          <line x1="512" y1="355" x2="648" y2="355" stroke="#96322C" marker-end="url(#ar-stop)"/>
+          <text x="652" y="352" font-size="10" fill="#96322C" stroke="none">below floor</text>
+          <text x="652" y="364" font-size="10" fill="#96322C" stroke="none" font-weight="600">no order</text>
+          <line x1="380" y1="376" x2="380" y2="394" marker-end="url(#ar)"/>
+
+          <rect x="248" y="394" width="264" height="32" rx="2"/>
+          <text x="380" y="414" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Execution Planner</text>
+          <line x1="380" y1="426" x2="380" y2="444" marker-end="url(#ar)"/>
+
+          <rect x="248" y="444" width="264" height="32" rx="2"/>
+          <text x="380" y="464" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Portfolio Manager</text>
+          <line x1="380" y1="476" x2="380" y2="498" marker-end="url(#ar)"/>
+
+          <!-- boundary -->
+          <line x1="8" y1="490" x2="752" y2="490" stroke-dasharray="5 4" opacity=".55"/>
+          <text x="8" y="484" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">language models above · deterministic code below</text>
+
+          <!-- risk officer -->
+          <rect x="248" y="498" width="264" height="42" rx="2" stroke="#96322C" stroke-width="1.75"/>
+          <text x="380" y="516" text-anchor="middle" font-size="12.5" fill="#96322C" stroke="none" font-weight="600">RISK OFFICER</text>
+          <text x="380" y="530" text-anchor="middle" font-size="9.5" fill="#96322C" stroke="none" opacity=".85">caps · exposure · daily stop · kill switch</text>
+          <line x1="512" y1="519" x2="648" y2="519" stroke="#96322C" marker-end="url(#ar-stop)"/>
+          <text x="652" y="516" font-size="10" fill="#96322C" stroke="none">cap breach</text>
+          <text x="652" y="528" font-size="10" fill="#96322C" stroke="none" font-weight="600">rejected</text>
+          <line x1="380" y1="540" x2="380" y2="558" marker-end="url(#ar)"/>
+
+          <rect x="248" y="558" width="264" height="34" rx="2" stroke-width="1.75"/>
+          <text x="380" y="574" text-anchor="middle" font-size="12" fill="currentColor" stroke="none">Router → paper venue</text>
+          <text x="380" y="586" text-anchor="middle" font-size="9.5" fill="currentColor" stroke="none" opacity=".7">then ledger · email · monitor · reflect</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>One cycle, from trigger to fill. The five analysts read a single shared context packet rather than fetching their own data — that is what makes the parallel fan-out affordable. The two red gates are the only places a cycle can be killed, and they check different things: the Auditor judges whether the argument is sound, the Risk Officer whether the position is permitted.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- TIERS -->
+<section class="band">
+  <div class="col col--wide">
+    <div class="eyebrow"><span class="lbl">The four tiers</span><span class="rule"></span></div>
+    <h2>Who does what</h2>
+    <div class="scroll">
+      <table>
+        <caption>Model choice tracks stakes and frequency, not seniority. Haiku does the high-volume rubric work; Opus is reserved for judgement.</caption>
+        <thead>
+          <tr><th>Tier</th><th>Component</th><th>Kind</th><th>Job</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="3" class="mono">Research</td><td><strong>Triage</strong></td><td><span class="tag tag--llm">haiku</span></td><td>Scores the whole universe cheaply so only the top few earn a full cycle. Cuts spend by roughly 90%.</td></tr>
+          <tr><td><strong>Context packet</strong></td><td><span class="tag tag--code">code</span></td><td>Fetches quotes, indicators, fundamentals, news and past lessons once. Every number carries its source and retrieval time.</td></tr>
+          <tr><td><strong>Five analysts</strong></td><td><span class="tag tag--llm">haiku · opus</span></td><td>Technical, fundamental, sentiment, news and macro — each scoring five sub-dimensions out of twenty against a versioned rubric.</td></tr>
+
+          <tr><td rowspan="4" class="mono">Planning</td><td><strong>Bull &amp; Bear</strong></td><td><span class="tag tag--llm">opus</span></td><td>Alternate for four turns. Each must concede what the other side got right — a debate with no concessions is pattern-matching, and the Auditor penalises it.</td></tr>
+          <tr><td><strong>Risk trio</strong></td><td><span class="tag tag--llm">opus</span></td><td>Aggressive, conservative and neutral argue position size. Direction was settled upstream.</td></tr>
+          <tr><td><strong>Auditor</strong></td><td><span class="tag tag--gate">gate</span></td><td>Scores data quality, methodology, signal consistency, risk coverage and transparency. May downgrade or reverse the call. Sees no P&amp;L — knowing how the month is going would give it a reason to be lenient.</td></tr>
+          <tr><td><strong>Planner &amp; PM</strong></td><td><span class="tag tag--llm">opus</span></td><td>Entry ladder, share floor and ceiling, stops, thesis-break clauses. The PM is the only agent that sees the whole book.</td></tr>
+
+          <tr><td rowspan="3" class="mono">Execution</td><td><strong>Risk Officer</strong></td><td><span class="tag tag--gate">code</span></td><td>Pure functions, property tests, under 50 ms. Twelve hard checks from position cap to kill switch.</td></tr>
+          <tr><td><strong>Router</strong></td><td><span class="tag tag--code">code</span></td><td>Re-checks the halt flag immediately before sending. Idempotent per decision and rung, so a restart cannot double-place.</td></tr>
+          <tr><td><strong>Ledger</strong></td><td><span class="tag tag--code">code</span></td><td>Lot-level accounting. Sells the highest-cost lot first, which is what makes trimming lower the blended average rather than raise it.</td></tr>
+
+          <tr><td rowspan="3" class="mono">Monitoring</td><td><strong>Monitor</strong></td><td><span class="tag tag--code">code</span></td><td>Every position carries watch conditions drawn from its own thesis — price bands, stops, earnings dates, regime flips, time stops. A fired condition wakes a new cycle and tells it why.</td></tr>
+          <tr><td><strong>Reflector</strong></td><td><span class="tag tag--llm">haiku</span></td><td>On close, writes three sentences citing return <em>and alpha</em>. A +8% trade in a +12% market is a loss, and a reflection that only sees raw return would file it as a win.</td></tr>
+          <tr><td><strong>Evaluator</strong></td><td><span class="tag tag--code">code</span></td><td>Benchmarks against buy-and-hold, the index, and a random-entry control — then plots return by Auditor confidence tier.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- VENUES -->
+<section class="band band--bar">
+  <div class="col col--wide">
+    <div class="eyebrow"><span class="lbl">Three markets, one interface</span><span class="rule"></span></div>
+    <h2>Where the orders go</h2>
+    <p>All three implement the same adapter and pass the same conformance suite, so agent code never knows which venue it is talking to. Adding a fourth is one file and a green test run.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Market</th><th>Venue</th><th class="num">Ships</th><th>Why this one</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Crypto</strong></td><td class="mono">Binance Spot Testnet</td><td class="num">1st</td><td>Open 24/7, so the real-time loop can be debugged at 11pm on a Sunday instead of waiting for Monday's open.</td></tr>
+          <tr><td><strong>US equities</strong></td><td class="mono">Alpaca Paper</td><td class="num">2nd</td><td>Free, real-time, and open to anyone with an email. The free tier serves IEX rather than consolidated prices, so US fills carry an extra slippage penalty.</td></tr>
+          <tr><td><strong>India</strong></td><td class="mono">In-house simulator</td><td class="num">3rd</td><td>No Indian broker offers a real paper sandbox, and SEBI's algo framework has required static-IP whitelisting, a registered strategy ID and exchange empanelment since April. Simulating keeps the regulatory surface at zero.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="lbl">On the simulator</span>
+      <p>A fill model that flatters you is not a simulator, it is a lie generator. Every simulated fill pays half the spread, slippage that scales superlinearly with participation rate, at least 300&nbsp;ms of latency, and the full Indian cost stack — brokerage, STT, exchange charges, GST, stamp duty. <strong>The acceptance test is that replaying a historical week produces worse results than naive close-price fills.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- PHASES -->
+<section class="band">
+  <div class="col col--wide">
+    <div class="eyebrow"><span class="lbl">Delivery — each phase ends at a gate</span><span class="rule"></span></div>
+    <h2>Order of work</h2>
+    <p>Everything that moves money is proven before anything that thinks about it is written. The measuring instrument ships early too — a pipeline that has run for two months with no way to score it has produced nothing.</p>
+    <div>
+      <div class="phase"><span class="n">00</span><div><h3>Foundation</h3><p class="gate"><b>gate</b> &nbsp;The paper-only invariant is enforced by a frozen endpoint allowlist and a test that fails the build if a live broker hostname appears anywhere in source.</p></div></div>
+      <div class="phase"><span class="n">01</span><div><h3>Broker spine</h3><p class="gate"><b>gate</b> &nbsp;A hand-placed order round-trips: fill arrives over WebSocket, ledger updates, reconciliation agrees with the venue. No agents yet.</p></div></div>
+      <div class="phase"><span class="n">02</span><div><h3>Risk, router, email</h3><p class="gate"><b>gate</b> &nbsp;A kill-switch drill cancels everything within one tick, and a deliberate cap breach is rejected, logged and emailed.</p></div></div>
+      <div class="phase"><span class="n">03</span><div><h3>Research tier</h3><p class="gate"><b>gate</b> &nbsp;Twenty cycles run inside budget with a non-zero cache read — a zero means a silent invalidator and a wrong cost model.</p></div></div>
+      <div class="phase"><span class="n">04</span><div><h3>Planning tier</h3><p class="gate"><b>gate</b> &nbsp;Read ten shadow decisions by hand. If the reasoning is not something you would act on, the prompts are wrong and no downstream engineering fixes that.</p></div></div>
+      <div class="phase"><span class="n">05</span><div><h3>Monitoring &amp; evaluation</h3><p class="gate"><b>gate</b> &nbsp;The return-by-confidence-tier chart renders on real data.</p></div></div>
+      <div class="phase"><span class="n">06</span><div><h3>Dashboard</h3><p class="gate"><b>gate</b> &nbsp;TradingView widgets for the market view, Lightweight Charts for our own fills and equity curve — live over WebSocket, no polling.</p></div></div>
+      <div class="phase"><span class="n">07</span><div><h3>US market</h3><p class="gate"><b>gate</b> &nbsp;Alpaca passes the same conformance suite; IEX-versus-consolidated disclosed in the interface.</p></div></div>
+      <div class="phase"><span class="n">08</span><div><h3>India market</h3><p class="gate"><b>gate</b> &nbsp;The simulator produces worse fills than a naive replay.</p></div></div>
+      <div class="phase"><span class="n">09</span><div><h3>Soak &amp; verdict</h3><p class="gate"><b>gate</b> &nbsp;Thirty unattended days, then a written answer.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CAVEAT -->
+<section class="band band--bar">
+  <div class="col">
+    <div class="eyebrow"><span class="lbl">What this can and cannot promise</span><span class="rule"></span></div>
+    <h2>The output is a verdict, not a bankroll</h2>
+    <p>No design guarantees profit, and one that assumes it is the design that loses money. Three things stay true and are built into the requirements rather than bolted on as disclaimers.</p>
+    <p><strong>There is no published evidence that LLM agents have an edge in liquid markets.</strong> Every framework this project draws from — including the two most-starred ones on GitHub — ships with a research-only disclaimer and no audited track record.</p>
+    <p><strong>Paper trading flatters you.</strong> No queue position, no market impact, and on the free US tier, single-exchange prices. Slippage and costs are modelled explicitly on all three venues so the gap stays visible.</p>
+    <p><strong>The measurable question is the deliverable.</strong> Does the pipeline beat buy-and-hold after costs, and is the sample large enough to believe? If the honest answer is no, that is a successful experiment run in paper money — and it is worth considerably more than a confident system with no way to check itself.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="col col--wide">
+    <span class="lbl">Full specification</span>
+    <div class="files">
+      <a href="#0">docs/00-RESEARCH-BRIEF.md</a>
+      <a href="#1">docs/01-REQUIREMENTS.md</a>
+      <a href="#2">docs/02-AGENT-ARCHITECTURE.md</a>
+      <a href="#3">docs/03-ROADMAP.md</a>
+      <a href="#4">docs/superpowers/plans/2026-09-03-phase-0-1-foundation-and-broker-spine.md</a>
+    </div>
+    <p style="margin-top:1.25rem">Built on patterns from TradingAgents (Apache-2.0), ai-hedge-fund (MIT), InvestSkill (MIT) and AI Trading Analyst (MIT). Paper money only — educational and research use, not financial advice.</p>
+  </div>
+</footer>
+
+</div>

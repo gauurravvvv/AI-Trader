@@ -20,6 +20,8 @@ every trade action and live TradingView charts.
 | [`docs/03-ROADMAP.md`](docs/03-ROADMAP.md) | Ten phases, gates, estimates, and the risk register |
 | [`docs/superpowers/plans/2026-09-03-phase-0-1-foundation-and-broker-spine.md`](docs/superpowers/plans/2026-09-03-phase-0-1-foundation-and-broker-spine.md) | Task-by-task TDD plan for Phases 0–1, ready to execute |
 
+A shareable visual overview lives at [`docs/assets/architecture-overview.html`](docs/assets/architecture-overview.html), published at <https://claude.ai/code/artifact/1fd620b5-182c-4d01-8798-e7df66909cfd> (private until you share it).
+
 ---
 
 ## Layout
