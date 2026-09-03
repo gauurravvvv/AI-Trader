@@ -37,7 +37,7 @@ const CREDIBLE_SPREAD_MULTIPLE = 8;
  *    0.01%. Taking that literally would model a cost no real order would pay.
  */
 export class YahooPriceSource implements PriceSource {
-  private readonly yf: YahooFinance;
+  private readonly yf: InstanceType<typeof YahooFinance>;
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(private readonly ttlMs = 15_000) {
@@ -111,7 +111,15 @@ export class YahooPriceSource implements PriceSource {
     try {
       const period1 = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const res = await this.yf.chart(symbol, { period1, interval: '1d' });
-      return res.quotes
+      const rows = res.quotes as {
+        date: Date | string;
+        open?: number | null;
+        high?: number | null;
+        low?: number | null;
+        close?: number | null;
+        volume?: number | null;
+      }[];
+      return rows
         .filter((r): r is typeof r & { close: number } => typeof r.close === 'number')
         .map((r) => ({
           t: new Date(r.date).toISOString(),
