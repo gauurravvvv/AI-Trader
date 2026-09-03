@@ -552,7 +552,16 @@ pnpm --filter @aegis/db exec drizzle-kit migrate
 Run: `pnpm vitest run packages/db`
 Expected: PASS, 4 tests
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Write the package barrel**
+
+```typescript
+// packages/db/src/index.ts
+export { getDb } from './client.js';
+export type { Db } from './client.js';
+export { orders, fills, positions, lots, reconciliations } from './schema.js';
+```
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add docker-compose.yml packages/db
@@ -854,7 +863,25 @@ export class FakeAdapter implements BrokerAdapter {
 Run: `pnpm vitest run packages/brokers`
 Expected: PASS, 7 tests
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Write the package barrel**
+
+```typescript
+// packages/brokers/src/index.ts
+export type {
+  BrokerAdapter, OrderRequest, VenueOrder, FillEvent, VenuePosition, Account,
+  VenueConstraints, SessionCalendar, ReconciliationReport, Unsubscribe,
+  Side, OrderType, OrderStatus,
+} from './types.js';
+export { runConformanceSuite } from './conformance.js';
+export { FakeAdapter } from './fake-adapter.js';
+export { BinanceTestnetAdapter } from './binance-testnet.js';   // added in Task 5
+```
+
+> Note: the `BinanceTestnetAdapter` export line will not compile until Task 5
+> creates that file. Add the line in Task 5's commit if you are running tasks
+> strictly in order.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/brokers
@@ -1108,7 +1135,7 @@ git commit -m "feat(brokers): Binance testnet adapter with sandbox mode and idem
 // packages/ledger/src/ledger.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Ledger } from './ledger.js';
-import { getDb } from '@aegis/db';
+import { getDb, orders, fills, positions, lots } from '@aegis/db';
 import { randomUUID } from 'node:crypto';
 
 const db = getDb(process.env.DATABASE_URL ?? 'postgres://aegis:aegis@localhost:5432/aegis');
@@ -1127,8 +1154,16 @@ describe('Ledger', () => {
 
   beforeEach(async () => {
     ledger = new Ledger(db, 'binance-testnet');
-    orderId = await ledger.__testSeedOrder('BTC/USDT');
-    await ledger.__testReset('BTC/USDT');
+    // Clean slate: lots -> fills -> positions -> orders (FK order matters).
+    await db.delete(lots);
+    await db.delete(fills);
+    await db.delete(positions);
+    await db.delete(orders);
+    const [row] = await db.insert(orders).values({
+      decisionId: randomUUID(), rungIndex: 0, venue: 'binance-testnet',
+      symbol: 'BTC/USDT', side: 'buy', type: 'market', qty: '1',
+    }).returning();
+    orderId = row!.id;
   });
 
   it('opens a position from the first buy fill', async () => {
@@ -1301,7 +1336,19 @@ export class Ledger {
 Run: `docker compose up -d && pnpm vitest run packages/ledger`
 Expected: PASS, 5 tests
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Write the package barrel**
+
+```typescript
+// packages/ledger/src/index.ts
+export { Ledger } from './ledger.js';
+export type { Lot, LedgerPosition } from './ledger.js';
+export { Reconciler } from './reconciler.js';   // added in Task 7
+```
+
+> Same note as Task 4: the `Reconciler` line lands in Task 7's commit if you are
+> running strictly in order.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/ledger
