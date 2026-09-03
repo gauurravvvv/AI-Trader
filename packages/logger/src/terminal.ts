@@ -12,7 +12,15 @@ const PAINT: Record<Kind, (s: string) => string> = {
 };
 const AGENT_COL = 16;
 
-const hhmmss = (d: Date): string => d.toISOString().slice(11, 19);
+/**
+ * Local time, not UTC. The operator is watching their own machine and reasoning
+ * about market sessions; a UTC clock in the log means doing timezone arithmetic
+ * in your head while a position is open.
+ */
+const hhmmss = (d: Date): string =>
+  [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join(':');
 const num = (n: number): string => n.toLocaleString('en-US');
 
 export function formatLine(o: {
@@ -20,7 +28,7 @@ export function formatLine(o: {
   agent: string;
   kind: Kind;
   msg: string;
-  colour?: boolean;
+  colour?: boolean | undefined;
 }): string {
   const agent = o.agent.padEnd(AGENT_COL).slice(0, AGENT_COL);
   const body = `${GLYPH[o.kind]} ${o.msg}`;
@@ -36,7 +44,7 @@ export function formatLlm(o: {
   tokensOut: number;
   costUsd: string;
   latencyMs: number;
-  colour?: boolean;
+  colour?: boolean | undefined;
 }): string {
   const msg =
     `${o.model}  in ${num(o.tokensIn)}  out ${num(o.tokensOut)}  ` +
@@ -48,7 +56,7 @@ export function formatBudget(o: {
   spent: string;
   budget: number;
   dayOfCycle: number;
-  colour?: boolean;
+  colour?: boolean | undefined;
 }): string {
   const pct = Math.round((Number(o.spent) / o.budget) * 100);
   const line =

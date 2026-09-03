@@ -33,3 +33,10 @@ venv/
 !reference/**/*.env.example
 !reference/**/.env.*.example
 !reference/**/.sample.env
+
+# Local SQLite database and logs
+data/
+
+# tsc -b build artifacts
+*.tsbuildinfo
+dist/

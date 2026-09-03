@@ -3,6 +3,11 @@ import { formatLine, formatLlm, formatBudget } from './terminal.js';
 
 const at = new Date('2026-09-03T14:32:07Z');
 const ESC = String.fromCharCode(27);
+// Timestamps render in LOCAL time, so the expectation is derived rather than
+// hardcoded — otherwise this test only passes in UTC.
+const localHHMMSS = [at.getHours(), at.getMinutes(), at.getSeconds()]
+  .map((n) => String(n).padStart(2, '0'))
+  .join(':');
 
 describe('formatLine', () => {
   it('renders time, agent, glyph and message', () => {
@@ -12,7 +17,7 @@ describe('formatLine', () => {
     expect(s).toContain('edgar-poller');
     expect(s).toContain('▸');
     expect(s).toContain('8-K detected  NVDA');
-    expect(s.startsWith('14:32:07')).toBe(true);
+    expect(s.startsWith(localHHMMSS)).toBe(true);
   });
 
   it('pads agent names to a fixed column so the log stays scannable', () => {
@@ -32,6 +37,14 @@ describe('formatLine', () => {
   it('emits no ANSI escapes when colour is off', () => {
     const s = formatLine({ at, agent: 'a', kind: 'error', msg: 'boom', colour: false });
     expect(s.includes(ESC)).toBe(false);
+  });
+
+  it('renders local time, not UTC', () => {
+    const s = formatLine({ at, agent: 'a', kind: 'event', msg: 'm', colour: false });
+    expect(s.startsWith(localHHMMSS)).toBe(true);
+    if (at.getTimezoneOffset() !== 0) {
+      expect(s.startsWith('14:32:07')).toBe(false);
+    }
   });
 });
 
