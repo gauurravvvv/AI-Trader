@@ -1,0 +1,29 @@
+# Enforce LF line endings across the repository on every platform.
+# Git auto-detects text vs binary; text files are normalized to LF in the
+# repo and checked out with LF everywhere (Windows included), preventing the
+# CRLF<->LF churn that shows up as "hundreds of files changed" on WSL/Windows.
+* text=auto eol=lf
+
+# Windows batch scripts must keep CRLF to run reliably.
+*.bat text eol=crlf
+
+# Binary file types: never apply any line-ending conversion.
+*.db      binary
+*.sqlite  binary
+*.sqlite3 binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.svg     text eol=lf
+*.pdf     binary
+*.eps     binary
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.eot     binary
+*.zip     binary
+*.gz      binary
+*.whl     binary
+.DS_Store binary

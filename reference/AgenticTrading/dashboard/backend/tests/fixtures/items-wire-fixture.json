@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "batch": "items-fixture.jsonl",
+  "count": 6,
+  "items": [
+    {
+      "guid": "fix-nvda-1",
+      "headline": "Nvidia reports record datacenter orders",
+      "url": "https://example.com/nvda-1",
+      "source": "CNBC",
+      "published": 1783339200.0,
+      "description": "Nvidia said datacenter bookings set a quarterly record.",
+      "tickers": ["NVDA"],
+      "editorial_score": 0.7
+    },
+    {
+      "guid": "fix-msft-1",
+      "headline": "Microsoft raises Azure guidance after record quarter",
+      "url": "https://example.com/msft-1",
+      "source": "Reuters",
+      "published": 1783335600.0,
+      "description": "Azure growth guidance was revised upward.",
+      "tickers": ["MSFT"],
+      "editorial_score": 0.5
+    },
+    {
+      "guid": "fix-msft-2",
+      "headline": "Azure guidance lifted as Microsoft posts record quarter",
+      "url": "https://example.com/msft-2",
+      "source": "Bloomberg",
+      "published": 1783334000.0,
+      "description": "Second outlet on the same Azure guidance raise.",
+      "tickers": ["MSFT"],
+      "editorial_score": 0.45
+    },
+    {
+      "guid": "fix-aapl-1",
+      "headline": "Apple opens a new retail store in Lisbon",
+      "url": "https://example.com/aapl-1",
+      "source": "MacRumors",
+      "published": 1783332000.0,
+      "description": "Store opening; no financial subject matter.",
+      "tickers": ["AAPL"],
+      "editorial_score": 0.05
+    },
+    {
+      "guid": "fix-googl-1",
+      "headline": "Alphabet names a new head of design",
+      "url": "https://example.com/googl-1",
+      "source": "The Verge",
+      "published": 1783330000.0,
+      "description": "Personnel move; no financial subject matter.",
+      "tickers": ["GOOGL"],
+      "editorial_score": 0.03
+    },
+    {
+      "guid": "fix-mkt-1",
+      "headline": "Treasury yields drift lower into the close",
+      "url": "https://example.com/mkt-1",
+      "source": "MarketWatch",
+      "published": 1783328400.0,
+      "description": "General-market story: carries no ticker at all.",
+      "tickers": [],
+      "editorial_score": 0.1
+    }
+  ]
+}

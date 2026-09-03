@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strategy · Agentic Trading Lab</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #131a26;
+      --border: #1f2a3a;
+      --text: #e6edf6;
+      --muted: #8aa0b8;
+      --accent: #0ea5e9;
+      --accent-2: #34d399;
+      --danger: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    .label { color: var(--muted); font-size: 12px; letter-spacing: .05em; margin-bottom: 8px; }
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: #0c121c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 13.5px;
+      margin: 0;
+      color: #d6e2f0;
+    }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    input[type="date"] {
+      background: #0c121c; border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 9px 10px; font-size: 14px;
+    }
+    button {
+      background: var(--accent); color: #001018; border: none; border-radius: 8px;
+      padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    a { color: var(--accent); }
+    .status { margin-top: 14px; font-size: 14px; color: var(--muted); min-height: 20px; }
+    .status.error { color: var(--danger); }
+    .status.success { color: var(--accent-2); }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 12px; }
+    .metric { background: #0c121c; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .metric .v { font-size: 18px; font-weight: 700; }
+    .metric .k { font-size: 11px; color: var(--muted); }
+    code { background: #0c121c; padding: 2px 6px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Trading Strategy</h1>
+    <div class="sub" id="meta">Loading…</div>
+
+    <div class="card">
+      <div class="label">Strategy prompt</div>
+      <pre id="prompt">—</pre>
+    </div>
+
+    <div class="card">
+      <div class="label">Run a backtest with this prompt</div>
+      <div class="row">
+        <div class="field">
+          <label for="start">Start date</label>
+          <input type="date" id="start" />
+        </div>
+        <div class="field">
+          <label for="end">End date</label>
+          <input type="date" id="end" />
+        </div>
+        <button id="runBtn" disabled>Run backtest</button>
+      </div>
+      <div class="status" id="status"></div>
+      <div class="metrics" id="metrics" hidden></div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    // Match app.js: same-origin locally; empty base on Vercel so /api and
+    // other backend paths hit vercel.json rewrites to Render.
+    const API = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? window.location.origin
+        : "";
+
+    const $ = (id) => document.getElementById(id);
+    const metaEl = $("meta");
+    const promptEl = $("prompt");
+    const statusEl = $("status");
+    const runBtn = $("runBtn");
+    const metricsEl = $("metrics");
+
+    // Stable-ish per-browser session id (backtest routes require a UUID).
+    function sessionId() {
+      let s = localStorage.getItem("trading-session-id");
+      if (!s) {
+        s = (crypto.randomUUID && crypto.randomUUID()) ||
+            "00000000-0000-4000-8000-" + Date.now().toString(16).padStart(12, "0");
+        localStorage.setItem("trading-session-id", s);
+      }
+      return s;
+    }
+
+    let strategyPrompt = null;
+
+    async function load() {
+      if (!code) {
+        metaEl.textContent = "No strategy code provided. Open a link like /strategy?code=…";
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/api/strategies/${encodeURIComponent(code)}`);
+        if (!res.ok) throw new Error(`Strategy not found (HTTP ${res.status})`);
+        const data = await res.json();
+        strategyPrompt = data.prompt;
+        promptEl.textContent = data.prompt;
+        const bits = [`code: ${data.code}`];
+        if (data.source) bits.push(`source: ${data.source}`);
+        if (data.created_at) bits.push(`created: ${new Date(data.created_at).toLocaleString()}`);
+        metaEl.textContent = (data.description ? data.description + " · " : "") + bits.join(" · ");
+        runBtn.disabled = false;
+      } catch (err) {
+        metaEl.textContent = err.message;
+      }
+    }
+
+    async function runBacktest() {
+      if (!strategyPrompt) return;
+      runBtn.disabled = true;
+      metricsEl.hidden = true;
+      statusEl.className = "status";
+      statusEl.textContent = "Submitting backtest (Alpaca hourly bars + hosted model)…";
+
+      const headers = { "Content-Type": "application/json", "X-Session-Id": sessionId() };
+      try {
+        const startRes = await fetch(`${API}/backtest/run`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            start_date: $("start").value,
+            end_date: $("end").value,
+            strategy_prompt: strategyPrompt,
+          }),
+        });
+        const startData = await startRes.json();
+        if (!startData.success) throw new Error(startData.error || "Failed to start backtest");
+
+        statusEl.textContent = "Backtest running… this can take a few minutes.";
+        for (let i = 0; i < 360; i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const st = await (await fetch(`${API}/backtest/status`, { headers })).json();
+          if (st.running) { statusEl.textContent = `Backtest running… (${(i + 1) * 5}s)`; continue; }
+          if (st.error) throw new Error(st.error);
+          if (st.success || st.runs_count) break;
+        }
+
+        const m = await (await fetch(`${API}/runs/latest/metrics`, { headers })).json();
+        statusEl.className = "status success";
+        statusEl.textContent = "Backtest complete.";
+        renderMetrics(m);
+      } catch (err) {
+        statusEl.className = "status error";
+        statusEl.textContent = err.message;
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    function pct(v) { return v == null ? "—" : (v * 100).toFixed(2) + "%"; }
+    function num(v) { return v == null ? "—" : Number(v).toFixed(2); }
+
+    function renderMetrics(m) {
+      metricsEl.hidden = false;
+      metricsEl.innerHTML = `
+        <div class="metric"><div class="v">${pct(m.total_return)}</div><div class="k">Return</div></div>
+        <div class="metric"><div class="v">${num(m.sharpe_ratio)}</div><div class="k">Sharpe</div></div>
+        <div class="metric"><div class="v">${pct(m.max_drawdown)}</div><div class="k">Max Drawdown</div></div>
+        <div class="metric"><div class="v">${m.num_trades ?? "—"}</div><div class="k">Trades</div></div>
+        <div class="metric"><div class="v">$${m.final_equity ? Number(m.final_equity).toLocaleString() : "—"}</div><div class="k">Final Equity</div></div>
+        <div class="metric"><div class="v"><a href="${API}/" >Dashboard →</a></div><div class="k">${m.llm_model || ""}</div></div>
+      `;
+    }
+
+    function initDateDefaults() {
+      // Default to the past 7 days (client clock); the user can still edit.
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - 7);
+      // Format from LOCAL date parts (a UTC-based formatter can be off by a
+      // calendar day near local midnight in non-UTC timezones).
+      const iso = (d) => {
+        const p = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      };
+      $("start").value = iso(start);
+      $("end").value = iso(end);
+    }
+
+    runBtn.addEventListener("click", runBacktest);
+    initDateDefaults();
+    load();
+  </script>
+</body>
+</html>

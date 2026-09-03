@@ -1,0 +1,19 @@
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+venv/
+# Generated artifacts
+output/
+*.pdf
+!docs/**/*.pdf

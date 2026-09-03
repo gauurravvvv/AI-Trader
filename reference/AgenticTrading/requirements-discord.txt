@@ -1,0 +1,13 @@
+# Optional dependencies for the Discord bot
+# (dashboard/backend/integrations/discord_bot.py).
+#
+# The bot needs the core backend deps PLUS discord.py. This file pulls in core
+# requirements too, so installing it alone gets everything needed to run the bot:
+#
+#     pip install -r requirements-discord.txt
+#
+# It's kept separate from core requirements.txt so the web/API/backtest install
+# stays lean (mirrors requirements-sphinx.txt for the docs build). The bot's tests
+# use importorskip('discord'), so they skip unless discord.py is installed.
+-r requirements.txt
+discord.py>=2.4,<3

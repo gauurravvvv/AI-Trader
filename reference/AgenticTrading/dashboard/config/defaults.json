@@ -1,0 +1,21 @@
+{
+  "defaultRuns": {
+    "agent": "agent_20260525_140635",
+    "buyhold": "buyhold_20260525_140635",
+    "djia": "djia_index_20260525_140635"
+  },
+  "defaultSettings": {
+    "assets": "Magnificent 7",
+    "assetList": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"],
+    "startDate": "2026-05-04",
+    "endDate": "2026-05-12",
+    "mode": "backtest",
+    "description": "Magnificent 7 run from May 4-12, 2026"
+  },
+  "notes": [
+    "These are the seed defaults loaded when the website initializes",
+    "Update the defaultRuns IDs if you want different baseline comparisons",
+    "Update defaultSettings to change the default date range and assets",
+    "The frontend will load these values if no other runs are available"
+  ]
+}

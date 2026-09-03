@@ -1,0 +1,2516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Trading Lab</title>
+    <link rel="icon" type="image/png" href="/images/atltransparent.png">
+    <link rel="apple-touch-icon" href="/images/atltransparent.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- API origin (Vercel serves this page, Render answers its fetches):
+         start the TCP+TLS handshake now, not at the first fetch. crossorigin
+         because every API call is a CORS request. -->
+    <link rel="preconnect" href="https://agentictrading.onrender.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=130">
+    <!-- defer: ~200KB that was render-blocking. Deferred scripts execute in
+         document order (this one first, the body-end ones after), all before
+         DOMContentLoaded, so Chart is defined before any chart renders. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" crossorigin="anonymous" defer></script>
+    <script>
+    (function () {
+        var NAV_STATE_KEY = 'nav-state';
+        // Single source of truth for ?view= / #hash -> page + subtab. It lives
+        // here rather than in app.js because the anti-FOUC boot below has to run
+        // before app.js loads; app.js reads it back off `window` so the boot CSS
+        // and the real navigation can never disagree about which page a URL means.
+        var NAV_VIEW_MAP = {
+            home: { page: 'home' },
+            community: { page: 'community' },
+            account: { page: 'account' },
+            credits: { page: 'credits' },
+            backtest: { page: 'playground', playgroundTab: 'backtest' },
+            paper: { page: 'playground', playgroundTab: 'paper' },
+            agents: { page: 'playground', playgroundTab: 'agents' },
+            marketplace: { page: 'community' },
+            playground: { page: 'playground', playgroundTab: 'agents' },
+            'my-algo': { page: 'playground', playgroundTab: 'agents' },
+            contest: { page: 'competition', competitionTab: 'leaderboard' },
+            live: { page: 'competition', competitionTab: 'live' },
+            // Two retired names for this tab: 'daily' was the Daily Leaderboard
+            // it replaced, 'season' was its working title before the board was
+            // named. Both stay as aliases so links already in the wild (Discord,
+            // the nightly-refresh runbook, PR #352's own screenshots) land on
+            // the successor board rather than silently falling through to
+            // Competition, which looks like a working link to the wrong data.
+            daily: { page: 'competition', competitionTab: 'live' },
+            season: { page: 'competition', competitionTab: 'live' },
+            competition: { page: 'competition', competitionTab: 'leaderboard' },
+            leaderboard: { page: 'competition', competitionTab: 'leaderboard' },
+            participants: { page: 'competition', competitionTab: 'participants' },
+            about: { page: 'competition', competitionTab: 'about' },
+            admin: { page: 'admin' },
+        };
+        window.NAV_VIEW_MAP = NAV_VIEW_MAP;
+        // Saved nav state written before the marketplace moved out of Playground.
+        // Exported for the same reason NAV_VIEW_MAP is: the boot below and app.js
+        // read the SAME localStorage blob, so a second hand-written copy of this
+        // rule could paint Playground while app.js renders Community.
+        function migrateSavedNavState(saved) {
+            if (saved && saved.page === 'playground' && saved.playgroundTab === 'marketplace') {
+                return { page: 'community' };
+            }
+            // The Daily Leaderboard became the Live Trading Leaderboard.
+            // Anyone whose last visit was that tab has 'daily' in localStorage
+            // (or 'season' from a build of this branch); left alone the key
+            // matches no boot-CSS rule and no panel, so Competition paints
+            // empty — a blank page, not a wrong one, which is harder to report.
+            if (saved && saved.page === 'competition'
+                && (saved.competitionTab === 'daily' || saved.competitionTab === 'season')) {
+                return Object.assign({}, saved, { competitionTab: 'live' });
+            }
+            return saved;
+        }
+        window.migrateSavedNavState = migrateSavedNavState;
+        function resolveBootNavigation() {
+            var params = new URLSearchParams(window.location.search);
+            var view = params.get('view') || params.get('mode');
+            var hash = window.location.hash.replace('#', '');
+            var legacy = view || hash;
+            // Discord / share deep links: open Playground backtest immediately.
+            if (params.get('agent_id') || params.get('run_id')) {
+                return { page: 'playground', playgroundTab: 'backtest' };
+            }
+            if (legacy && NAV_VIEW_MAP[legacy]) {
+                // Copy: the map is shared with app.js and must stay immutable.
+                var mapped = NAV_VIEW_MAP[legacy];
+                // Role-gate the admin shell before hydration: without this,
+                // any visitor with ?view=admin sees the console chrome until
+                // app.js boots. The cached user decides here; app.js's
+                // navigateToPage re-checks after hydration, and the admin
+                // APIs 401/403 regardless.
+                if (mapped.page === 'admin') {
+                    var bootUser = null;
+                    try {
+                        bootUser = JSON.parse(
+                            localStorage.getItem('auth-user') || 'null',
+                        );
+                    } catch (e) { /* corrupt cache reads as signed out */ }
+                    if (!bootUser || bootUser.role !== 'admin') {
+                        mapped = { page: 'home' };
+                    }
+                }
+                return {
+                    page: mapped.page,
+                    playgroundTab: mapped.playgroundTab,
+                    competitionTab: mapped.competitionTab,
+                };
+            }
+            try {
+                var saved = migrateSavedNavState(
+                    JSON.parse(localStorage.getItem(NAV_STATE_KEY) || 'null'),
+                );
+                var valid = ['home', 'playground', 'competition', 'community', 'account', 'credits'];
+                if (saved && valid.indexOf(saved.page) !== -1) {
+                    return saved;
+                }
+            } catch (e) { /* ignore */ }
+            return { page: 'home' };
+        }
+        var nav = resolveBootNavigation();
+        var html = document.documentElement;
+        html.setAttribute('data-nav-boot', '');
+        html.setAttribute('data-nav-page', nav.page);
+        html.setAttribute('data-nav-playground-tab', nav.playgroundTab || 'agents');
+        html.setAttribute('data-nav-competition-tab', nav.competitionTab || 'leaderboard');
+        // Warm the API before the JS pipeline even finishes downloading: on
+        // Render's free tier the first request may pay a 30-60s cold start,
+        // so every second saved here comes straight off page readiness.
+        // Mirrors app.js's API_BASE host rule; app.js reads window.API_WARMUP
+        // to decide whether to show the slow-boot notice.
+        var apiBase = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+            ? location.origin
+            : 'https://agentictrading.onrender.com';
+        window.API_WARMUP = fetch(apiBase + '/health').catch(function () { return null; });
+    })();
+    </script>
+    <style id="nav-boot-style">
+    html[data-nav-boot]:not([data-nav-page="home"]) #homeView { display: none !important; }
+    html[data-nav-boot][data-nav-page="playground"] #playgroundView { display: block !important; }
+    html[data-nav-boot][data-nav-page="competition"] #competitionView { display: block !important; }
+    html[data-nav-boot][data-nav-page="community"] #communityView { display: block !important; }
+    html[data-nav-boot][data-nav-page="account"] #accountView { display: block !important; }
+    html[data-nav-boot][data-nav-page="credits"] #creditsView { display: block !important; }
+    html[data-nav-boot][data-nav-page="admin"] #adminView { display: block !important; }
+    html[data-nav-boot] .primary-nav .mode-btn.active { background-color: transparent; color: var(--text-secondary); }
+    html[data-nav-boot][data-nav-page="home"] .primary-nav [data-mode="home"] { background-color: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="playground"] .primary-nav [data-mode="playground"] { background-color: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="competition"] .primary-nav [data-mode="competition"] { background-color: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="community"] .primary-nav [data-mode="community"] { background-color: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="playground"] .playground-subtabs .subtab-btn.active { background: transparent; color: var(--text-secondary); }
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="agents"] .playground-subtabs [data-playground-tab="agents"],
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="backtest"] .playground-subtabs [data-playground-tab="backtest"],
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="paper"] .playground-subtabs [data-playground-tab="paper"] { background: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="backtest"] #playgroundAgentsPanel,
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="paper"] #playgroundAgentsPanel { display: none !important; }
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="backtest"] .main-container.playground-backtest-panel { display: grid !important; }
+    html[data-nav-boot][data-nav-page="playground"][data-nav-playground-tab="paper"] #paperTradingView { display: block !important; }
+    html[data-nav-boot][data-nav-page="competition"] .competition-subtabs .subtab-btn.active { background: transparent; color: var(--text-secondary); }
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="live"] .competition-subtabs [data-competition-tab="live"],
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="leaderboard"] .competition-subtabs [data-competition-tab="leaderboard"],
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="participants"] .competition-subtabs [data-competition-tab="participants"],
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="about"] .competition-subtabs [data-competition-tab="about"] { background: var(--info-color); color: white; }
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="live"] #leaderboardView,
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="leaderboard"] #leaderboardView { display: flex !important; }
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="participants"] #competitionParticipantsPanel { display: block !important; }
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="about"] #competitionAboutPanel { display: block !important; }
+    /* The rule above reveals #leaderboardView for the live tab, but every word
+       inside it is still the Competition board's: its title, its Sep–Oct dates,
+       its "Upcoming" badge and its contest Rules button, with the preview banner
+       shipped `hidden`. Painted as-is, a shared ?view=live link opens on the
+       contest's identity with no disclaimer at all. So for that tab the wrong
+       identity is suppressed and the banner — which ships with real static text,
+       not an empty div — is revealed until leaderboard.js repaints both.
+       (This only covers up to app.js executing; loadLeaderboardData repaints the
+       chrome synchronously before its fetch, which is what covers the cold-start
+       window after data-nav-boot is gone.) */
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="live"] #leaderboardView .contest-identity,
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="live"] #competitionRulesBtn { visibility: hidden; }
+    html[data-nav-boot][data-nav-page="competition"][data-nav-competition-tab="live"] #seasonPreviewBanner { display: block !important; }
+    </style>
+</head>
+<body>
+    <!-- Home page icon sprite (inline SVG, no external dependency) -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+      <symbol id="icon-link2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></symbol>
+      <symbol id="icon-discord" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></symbol>
+      <symbol id="icon-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></symbol>
+      <symbol id="icon-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol>
+      <symbol id="icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+      <symbol id="icon-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></symbol>
+      <symbol id="icon-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></symbol>
+      <symbol id="icon-shield-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="icon-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></symbol>
+      <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></symbol>
+      <symbol id="icon-graduation" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></symbol>
+      <symbol id="icon-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="icon-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M9 13h6"/></symbol>
+      <symbol id="icon-network" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></symbol>
+      <symbol id="icon-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></symbol>
+      <symbol id="icon-trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
+      <symbol id="icon-trending-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+      <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="icon-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></symbol>
+      <symbol id="icon-badge-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></symbol>
+      <symbol id="icon-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+      <symbol id="icon-external-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+          <symbol id="icon-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="icon-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+      <symbol id="icon-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v10a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V6"/><path d="M16 13h4"/></symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></symbol>
+</svg>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <a class="header-github-link" href="https://github.com/Open-Finance-Lab/AgenticTrading" target="_blank" rel="noopener noreferrer" aria-label="AgenticTrading on GitHub">
+                <svg class="ui-icon header-github-icon" aria-hidden="true"><use href="#icon-github"/></svg>
+                <span class="header-github-name">AgenticTrading</span>
+            </a>
+            <a id="openDiscordBtn" class="header-discord-btn" data-discord-link href="https://discord.gg/9HnQ6XDG98" target="_blank" rel="noopener noreferrer">
+                <svg class="header-discord-btn__icon" aria-hidden="true"><use href="#icon-discord"/></svg>
+                <span class="header-discord-btn__label">Discord Community</span>
+                <svg class="header-discord-btn__arrow" aria-hidden="true"><use href="#icon-chevron-right"/></svg>
+            </a>
+        </div>
+        <a class="header-brand" href="/" aria-label="Agentic Trading Lab home">
+            <div class="logo-container">
+                <img src="images/atltransparent.png" alt="" class="logo-icon">
+            </div>
+            <div class="title-section">
+                <h1>Agentic Trading Lab</h1>
+            </div>
+        </a>
+        <div class="header-right">
+            <button id="navMenuToggle" class="nav-menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+            <nav id="primaryNav" class="mode-toggle primary-nav" aria-label="Primary">
+                <button class="mode-btn active" data-mode="home">Home</button>
+                <button class="mode-btn" data-mode="playground">My Agents</button>
+                <button class="mode-btn" data-mode="competition">Competition</button>
+                <button class="mode-btn" data-mode="community">Community</button>
+            </nav>
+            <div id="authControls" class="header-account">
+                <button id="authSignInBtn" class="auth-btn auth-btn-primary" type="button">Sign in</button>
+                <div id="accountMenuWrap" class="account-menu-wrap" hidden>
+                    <button id="authAccountBtn" class="auth-account-btn" type="button" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
+                        <span id="authAvatar" class="auth-avatar" aria-hidden="true"></span>
+                        <span id="authUserLabel" class="auth-user-label"></span>
+                        <span class="auth-caret" aria-hidden="true">▾</span>
+                    </button>
+                    <div id="accountMenu" class="account-menu" hidden>
+                        <div class="account-menu-identity">
+                            <span id="accountMenuName" class="account-menu-name"></span>
+                            <span id="accountMenuEmail" class="account-menu-email"></span>
+                        </div>
+                        <button id="accountMenuAccountBtn" class="account-menu-item" type="button">Account</button>
+                        <button id="accountMenuCreditsBtn" class="account-menu-item" type="button">Credits &amp; Billing</button>
+                        <button id="accountMenuAdminBtn" class="account-menu-item" type="button" hidden>Admin</button>
+                        <button id="accountMenuLogoutBtn" class="account-menu-item account-menu-item--danger" type="button">Log out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div id="authModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="authModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="authModalTitle">
+            <button id="authModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="authModalTitle" class="auth-modal-title">Sign in</h2>
+            <p id="authModalSubtitle" class="auth-modal-subtitle">Optional — backtest and paper trading work without an account.</p>
+            <form id="authForm" class="auth-form">
+                <label class="auth-field">
+                    <span>Email</span>
+                    <input id="authEmail" type="email" autocomplete="email" required>
+                </label>
+                <label id="authDisplayNameField" class="auth-field" hidden>
+                    <span>Display name</span>
+                    <input id="authDisplayName" type="text" autocomplete="name">
+                </label>
+                <label id="authPasswordField" class="auth-field">
+                    <span>Password</span>
+                    <input id="authPassword" type="password" autocomplete="current-password" required minlength="8">
+                </label>
+                <p class="auth-switch"><button type="button" id="authForgotPasswordBtn" class="auth-link-btn">Forgot password?</button></p>
+                <div id="resetCodeStep" hidden>
+                    <p id="resetSentCopy" class="auth-modal-subtitle"></p>
+                    <label class="auth-field">
+                        <span>Reset code</span>
+                        <input id="resetCodeInput" type="text" maxlength="6" autocomplete="one-time-code">
+                    </label>
+                    <label class="auth-field">
+                        <span>New password</span>
+                        <input id="resetNewPassword" type="password" autocomplete="new-password" minlength="8">
+                    </label>
+                    <ul id="resetPasswordHints" class="password-policy-hints" hidden></ul>
+                </div>
+                <p id="authError" class="auth-error" hidden></p>
+                <button id="authSubmitBtn" class="auth-submit" type="submit">Sign in</button>
+            </form>
+            <p class="auth-switch">
+                <button id="authSwitchBtn" class="auth-link-btn" type="button">Need an account? Sign up</button>
+            </p>
+        </div>
+    </div>
+
+    <div id="runBacktestModal" class="auth-modal run-backtest-modal" hidden>
+        <div class="auth-modal-backdrop" id="runBacktestModalBackdrop"></div>
+        <div class="auth-modal-panel run-backtest-modal-panel" role="dialog" aria-labelledby="runBacktestModalTitle">
+            <button id="runBacktestModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="runBacktestModalTitle" class="auth-modal-title">Run Backtest</h2>
+            <p class="auth-modal-subtitle">Simulation settings for this agent. Does not change its Paper Trading Allocated Capital.</p>
+
+            <div class="run-backtest-modal-body">
+                <div class="control-group">
+                    <label>Agent</label>
+                    <p id="runBacktestAgentName" class="run-backtest-readonly">—</p>
+                </div>
+
+                <div class="control-group" id="runBacktestPromptGroup" hidden>
+                    <label>Trading instruction</label>
+                    <pre id="runBacktestPromptPreview" class="run-backtest-prompt-preview"></pre>
+                </div>
+
+                <div class="control-group">
+                    <label>Period</label>
+                    <p class="control-helper">Pre-filled with a recent window that has full market data. You can pick any window up to 31 days.</p>
+                    <div class="date-range-inputs">
+                        <div class="date-input-wrapper">
+                            <input type="date" id="startDate" value="2026-04-15" class="date-input">
+                        </div>
+                        <span class="date-separator">→</span>
+                        <div class="date-input-wrapper">
+                            <input type="date" id="endDate" value="2026-04-23" class="date-input">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label for="marketDataSourceSelect">Market Data</label>
+                    <select class="control-select" id="marketDataSourceSelect" aria-label="Select market data source">
+                        <option value="alpaca" selected>Alpaca market data</option>
+                    </select>
+                    <p id="vnpySimulationNotice" class="market-data-notice" hidden>
+                        Simulated practice data — repeatable results, rule-based decisions only (no AI)
+                    </p>
+                    <p id="ifindAshareNotice" class="market-data-notice is-ifind" hidden>
+                        Historical iFinD A-share data for paper backtesting; not real-time and no real orders.
+                    </p>
+                </div>
+
+                <div class="control-group">
+                    <label>Asset Universe</label>
+                    <p class="control-helper">Choose the universe of assets your agent is allowed to trade.</p>
+                    <div id="ifindAshareUniverse" class="ifind-universe-panel" hidden>
+                        <select
+                            id="ifindAshareUniverseSelect"
+                            class="control-select ifind-universe-select"
+                            aria-label="Select registered A-share universe"
+                        >
+                            <option value="a_share_demo_6">A-Share Demo 6</option>
+                            <option value="csi300_sample_20_2026h2">CSI 300 Sample 20 (2026 H2)</option>
+                        </select>
+                        <div class="ifind-universe-head">
+                            <span id="ifindAshareUniverseTitle" class="ifind-universe-title">A-Share Demo 6 · 6 stocks</span>
+                            <span class="ifind-timeframe">60m</span>
+                        </div>
+                        <div id="ifindAshareSymbolGrid" class="ifind-symbol-grid" aria-label="Registered A-share universe"></div>
+                    </div>
+                    <div class="universe-tabs" id="universeTabs">
+                        <button class="universe-tab active" data-tab="builtin" type="button">Built-in</button>
+                        <button class="universe-tab" data-tab="custom" type="button">Custom</button>
+                    </div>
+                    <div id="builtinTab" class="universe-content active">
+                        <div class="preset-cards">
+                            <div class="preset-card selected" id="djiaCard">
+                                <div class="preset-name">DJIA 30</div>
+                                <div class="preset-desc">30 blue-chip companies</div>
+                                <button class="preset-btn" type="button">Selected</button>
+                            </div>
+                            <div class="preset-card" id="mag7Card">
+                                <div class="preset-name">Magnificent 7</div>
+                                <div class="preset-desc">7 major tech companies</div>
+                                <button class="preset-btn" type="button">Select</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="customTab" class="universe-content">
+                        <div class="custom-universe">
+                            <div class="custom-header">Build custom universe</div>
+                            <div class="search-input-group">
+                                <input type="text" class="search-asset-input" id="assetSearchInput" placeholder="Search company or ticker">
+                                <button class="add-asset-btn" type="button">+</button>
+                            </div>
+                            <div class="selected-chips" id="selectedChips">
+                                <div class="chip" data-ticker="AAPL">AAPL <span class="chip-remove">×</span></div>
+                                <div class="chip" data-ticker="MSFT">MSFT <span class="chip-remove">×</span></div>
+                                <div class="chip" data-ticker="GOOGL">GOOGL <span class="chip-remove">×</span></div>
+                                <div class="chip" data-ticker="AMZN">AMZN <span class="chip-remove">×</span></div>
+                                <div class="chip" data-ticker="NVDA">NVDA <span class="chip-remove">×</span></div>
+                                <div class="chip" data-ticker="TSLA">TSLA <span class="chip-remove">×</span></div>
+                            </div>
+                            <div class="chips-helper">Add companies to create your custom universe.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Allocated Capital</label>
+                    <div class="run-backtest-capital-row">
+                        <p id="runBacktestCapitalValue" class="run-backtest-readonly">—</p>
+                        <button id="runBacktestEditCapitalBtn" class="run-backtest-edit-link" type="button">Edit in Configure</button>
+                    </div>
+                    <p id="runBacktestCapitalHint" class="control-helper">Simulated starting cash. Does not change Paper Trading Allocated Capital.</p>
+                </div>
+
+                <div class="control-group" id="runBacktestBillingGroup">
+                    <label>AI billing</label>
+                    <div
+                        class="run-backtest-billing-toggle"
+                        role="radiogroup"
+                        aria-label="AI billing"
+                    >
+                        <button
+                            type="button"
+                            data-billing-mode="byok"
+                            role="radio"
+                            aria-checked="false"
+                        >Use my API key</button>
+                        <button
+                            type="button"
+                            data-billing-mode="platform_credits"
+                            role="radio"
+                            aria-checked="false"
+                        >Use ATL Credits</button>
+                    </div>
+                    <div id="runBacktestProviderControl">
+                        <label for="runBacktestProviderSelect">Provider</label>
+                        <select
+                            class="control-select"
+                            id="runBacktestProviderSelect"
+                        ></select>
+                    </div>
+                    <p
+                        id="runBacktestBillingHint"
+                        class="control-helper"
+                    ></p>
+                    <button
+                        id="runBacktestApiKeysBtn"
+                        class="auth-btn auth-btn-secondary run-backtest-api-keys"
+                        type="button"
+                        hidden
+                    >Go to API Keys</button>
+                </div>
+
+                <div class="control-group">
+                    <label for="modelSelect">Model for this run</label>
+                    <p id="runBacktestModelReadonly" class="run-backtest-readonly" hidden>—</p>
+                    <p id="modelSelectHint" class="control-helper">Choose a provider-compatible model for this run.</p>
+                    <!-- Options are written by populateSupportedModelSelects() from
+                         SUPPORTED_MODELS in app.js. Do not hardcode them here: this
+                         list and #builtinAgentModel's drifted apart once already. -->
+                    <select class="control-select" id="modelSelect" hidden></select>
+                </div>
+
+                <select id="backtestAgentSelect" hidden aria-hidden="true">
+                    <option value="">Loading agents…</option>
+                </select>
+            </div>
+
+            <p id="runBacktestModalError" class="auth-error" hidden></p>
+            <button id="runBacktestModalSubmit" class="auth-submit" type="button">▶ Run Backtest</button>
+        </div>
+    </div>
+
+    <!-- Live Ticker — auto-scrolls right to left -->
+    <div class="ticker-bar">
+        <div class="ticker-marquee" id="tickerMarquee">
+            <div class="ticker-track" id="tickerTrack">
+                <div class="ticker-placeholder">Loading market data...</div>
+            </div>
+        </div>
+    </div>
+    <div class="ticker-info">
+        <span class="ticker-source-label" title="Stock prices and daily % change from Yahoo Finance. Crypto uses CoinGecko when included.">Data: Yahoo Finance</span>
+        <span id="tickerMarketsStatus" class="ticker-markets-open" role="status" aria-live="polite"><span class="ticker-markets-dot" aria-hidden="true"></span><span class="ticker-markets-label">Markets open</span></span>
+    </div>
+
+    <!-- Home -->
+    <div id="homeView" class="page-view home-view">
+        <div class="home-page home-page--pager">
+            <div class="home-pager-track" id="homePagerTrack" data-page="0">
+
+                <!-- Screen 0 is what every returning user lands on: onHomePageShow()
+                     calls setHomePagerPage(0) on every entry to Home. It used to be a
+                     second copy of the marketing hero — the same "Talk to Agents /
+                     Test Trading Ideas" pitch and a "Get Started" button, shown to
+                     people who had already got started. It now carries the one board
+                     with real numbers on it. -->
+                <section class="home-pager-screen" id="homeScreenLanding" aria-label="Leaderboard">
+                    <div class="home-landing-hero">
+                    <div class="home-landing-hero-grid-bg" aria-hidden="true"></div>
+                    <div class="home-landing-hero-inner">
+                        <div class="home-landing-hero-copy">
+                            <h1 class="home-landing-headline">
+                                <span class="home-headline-line home-headline-line--1">See where</span>
+                                <span class="home-headline-line home-headline-line--2 home-headline-accent">each model ranks</span>
+                            </h1>
+                            <!-- A challenge, then the mechanism that makes the
+                                 challenge true. The "is my agent on this list?"
+                                 pre-emption AN EARLIER lede carried still lives
+                                 on the board itself ("AI models only - ranked
+                                 by return", #homeModuleRanking) -- on the
+                                 element making the claim, rather than in a lede
+                                 that had to be a disclaimer and a value prop at
+                                 once. That lede was two ago; the one this
+                                 replaced ("See how the AI models did...")
+                                 carried no pre-emption at all, so nothing was
+                                 moved off this sentence. The gloss on "agent"
+                                 drops here: the reader is signed in and inside
+                                 the app, where the word is glossed throughout.
+
+                                 THE SECOND SENTENCE IS NOT DESCRIPTION AND NOT
+                                 OPTIONAL. Neither leaderboard takes entries --
+                                 every row is the curated roster in
+                                 config/leaderboard.json and there is no
+                                 submission route -- so "beat them" standing
+                                 alone, under a ranking headline and above a
+                                 "Create a free account" button, promises a
+                                 place on the board. Naming the mechanism is
+                                 what keeps the challenge honest, and it aims
+                                 the reader at the CTA, which is the job a bare
+                                 challenge was reaching for anyway. -->
+                            <p class="home-landing-lede">Think you can beat them? Test your own idea on the same days.</p>
+                            <div class="home-landing-ctas">
+                                <!-- Label is swapped to the signed-in form by
+                                     initHomeGetStarted() in home-page.js. Offering
+                                     "Create a free account" to someone who is signed in
+                                     was the original complaint. -->
+                                <button id="homeGetStartedBtn" class="home-btn home-btn-primary home-landing-cta" type="button" data-label-signed-out="Create a free account" data-label-signed-in="Test a trading idea">Create a free account</button>
+                                <a class="home-btn home-btn-secondary home-landing-cta" href="https://discord.gg/9HnQ6XDG98" target="_blank" rel="noopener noreferrer">Join our Discord community</a>
+                            </div>
+                        </div>
+                        <div class="home-landing-board">
+                            <article class="home-module home-module--ranking" id="homeModuleRanking">
+                                <header class="home-module-head">
+                                    <h3 class="home-module-title">
+                                        <svg class="ui-icon ui-icon--inline hm-rank-title-icon" aria-hidden="true"><use href="#icon-trophy"/></svg>
+                                        Competition Leaderboard
+                                    </h3>
+                                </header>
+                                <div class="hm-rank-meta">
+                                    <!-- Dates come from payload.window.label, written by
+                                         home-page.js. The range was hardcoded here and went
+                                         stale silently; above the fold that is a bigger lie
+                                         than it was three modules down. -->
+                                    <span id="homeModuleRankWindow">Same backtest window for every AI model</span>
+                                    <span>AI models only &middot; ranked by return</span>
+                                </div>
+                                <div class="hm-rank-table-head" aria-hidden="true">
+                                    <span>#</span><span>AI Model</span><span>Ending value</span><span>Return</span><span title="Risk-adjusted return, annualized from hourly results.">Sharpe</span>
+                                </div>
+                                <ol class="home-module-rank-list" id="homeModuleRankList">
+                                    <li class="home-module-rank-empty">Loading the standings&hellip;</li>
+                                </ol>
+                                <!-- Text is written by home-page.js, which knows why the
+                                     sample is showing. The two reasons need different
+                                     copy: an unreachable API and a healthy API with no
+                                     model entries yet are not the same fact. Both forms
+                                     must still say the visible rows are a sample — the
+                                     rows are real model names with invented numbers. -->
+                                <p class="hm-rank-sample" id="homeModuleRankSample" hidden></p>
+                                <!-- Present tense here would promise a running nightly
+                                     advance on the one page that never renders the board's
+                                     preview banner — the same over-claim the banner exists
+                                     to deny, two clicks upstream of the correction. -->
+                                <p class="hm-rank-season">
+                                    Every AI model above traded the same fixed window. The
+                                    <button class="hm-inline-link" id="homeModuleLiveBtn" type="button">Live Trading Leaderboard</button>
+                                    is the other board &mdash; designed to move forward one trading
+                                    session at a time, on prices nobody has seen yet. It is a
+                                    Season 0 preview and has not moved forward yet.
+                                </p>
+                                <button class="hm-footer-btn" id="homeModuleRankingBtn" type="button">See both leaderboards</button>
+                            </article>
+                        </div>
+                    </div>
+
+                    <button id="homeScrollHint" class="home-scroll-hint" type="button" aria-label="Scroll to your dashboard">
+                        <span class="home-scroll-hint-label">See your dashboard</span>
+                        <svg class="home-scroll-hint-icon" aria-hidden="true"><use href="#icon-chevron-down"/></svg>
+                    </button>
+                    </div>
+                </section>
+
+                <section class="home-pager-screen" id="homeScreenDashboard" aria-label="Dashboard">
+                <div class="home-dashboard-screen-inner">
+                    <div class="home-modules" id="homeModules">
+                        <div class="dashboard-top-grid">
+                        <article class="home-module home-module--portfolio" id="homeModulePortfolio">
+                            <header class="home-module-head">
+                                <h3 class="home-module-title">My Portfolio</h3>
+                                <span class="hm-demo-badge" id="homePortfolioDemoBadge">Demo data</span>
+                            </header>
+                            <div class="hm-port-user">
+                                <div class="home-module-avatar" id="homePortfolioAvatar" aria-hidden="true">G</div>
+                                <div class="hm-port-user-meta">
+                                    <p class="home-module-name" id="homePortfolioName">Guest Account</p>
+                                    <button class="hm-mini-btn hm-mini-btn--ghost" id="homeModulePortfolioBtn" type="button">Sign in</button>
+                                </div>
+                            </div>
+                            <div class="hm-port-metrics" id="homePortfolioMetrics">
+                                <div class="hm-port-metric hm-port-metric--equity">
+                                    <span class="hm-port-metric-label" id="homePortfolioEquityLabel">Demo Portfolio · Total Equity</span>
+                                    <strong class="hm-port-metric-value tabular-nums" id="homePortfolioEquity">$10,000.00</strong>
+                                </div>
+                                <div class="hm-port-metric hm-port-metric--side">
+                                    <span class="hm-port-metric-label">Today’s P&amp;L</span>
+                                    <strong class="hm-port-metric-value tabular-nums" id="homeMetricPnl">$0.00 <em id="homeMetricPnlPct">(0.00%)</em></strong>
+                                </div>
+                            </div>
+                            <div class="hm-port-range" role="tablist" aria-label="Equity range">
+                                <button type="button" class="hm-range-btn is-active" data-port-range="1D">1D</button>
+                                <button type="button" class="hm-range-btn" data-port-range="7D">7D</button>
+                                <button type="button" class="hm-range-btn" data-port-range="1M">1M</button>
+                                <button type="button" class="hm-range-btn" data-port-range="3M">3M</button>
+                                <button type="button" class="hm-range-btn" data-port-range="1Y">1Y</button>
+                                <button type="button" class="hm-range-btn" data-port-range="All">All</button>
+                            </div>
+                            <figure class="hm-port-figure" id="homePortfolioFigure">
+                                <svg id="homePortfolioChart" class="hm-port-chart" viewBox="0 0 360 148" role="img" aria-label="Portfolio equity over time"></svg>
+                                <div class="hm-port-tooltip" id="homePortfolioTooltip" hidden></div>
+                            </figure>
+                            <button class="hm-footer-btn" id="homeModuleViewPortfolioBtn" type="button">View my portfolio</button>
+                        </article>
+
+                        <article class="home-module home-module--agent" id="homeModuleAgent">
+                            <header class="home-module-head">
+                                <h3 class="home-module-title">My Agents</h3>
+                                <button class="hm-head-outline-btn" id="homeModuleViewAgentsBtn" type="button">Manage Agents</button>
+                            </header>
+                            <div class="home-module-body" id="homeAgentBody">
+                                <div class="hm-agent-empty" id="homeAgentEmpty">
+                                    <p class="hm-agent-empty-copy">Create your first agent to start testing trading ideas.</p>
+                                    <button class="hm-agent-empty-cta" id="homeModuleCreateAgentEmpty" type="button">Create Agent</button>
+                                </div>
+                                <div class="hm-agent-filled" id="homeAgentFilled" hidden></div>
+                            </div>
+                        </article>
+
+                        </div>
+
+                        <div class="dashboard-bottom-grid">
+                        <article class="home-module home-module--market" id="homeModuleMarket">
+                            <header class="home-module-head hm-market-head">
+                                <div class="hm-market-title-row">
+                                    <h3 class="home-module-title" id="homeModuleMarketTitle">Market News</h3>
+                                    <span class="hm-demo-badge" id="homeMarketDemoBadge" hidden>Demo data</span>
+                                </div>
+                                <div class="hm-tabs" role="tablist" aria-label="Market panels">
+                                    <button type="button" class="hm-tab is-active" data-market-tab="news" role="tab" aria-selected="true">News</button>
+                                    <button type="button" class="hm-tab" data-market-tab="signals" role="tab" aria-selected="false">Signals</button>
+                                </div>
+                                <span class="hm-source-label" id="homeModuleMarketBtn" role="link" tabindex="0">Powered by FinSearch</span>
+                            </header>
+                            <div class="hm-market-grid">
+                                <div class="hm-market-feed" id="homeMarketNewsPane">
+                                    <p class="home-module-market-status" id="homeMarketStatus" hidden></p>
+                                    <ul class="hm-news-list" id="homeModuleNewsList"></ul>
+                                </div>
+                                <div class="hm-market-feed" id="homeMarketSignalsPane" hidden>
+                                    <p class="home-module-market-status" id="homeMarketSignalsStatus" hidden></p>
+                                    <ul class="hm-news-list" id="homeModuleSignalsList"></ul>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="home-module home-module--community" id="homeModuleCommunity">
+                            <header class="home-module-head">
+                                <h3 class="home-module-title">Community Overview</h3>
+                                <div class="hm-community-head-meta">
+                                    <span class="hm-demo-badge" id="homeCommunityDemoBadge">Demo data</span>
+                                    <span class="hm-live-badge"><span class="home-live-dot" aria-hidden="true"></span>Live</span>
+                                </div>
+                            </header>
+                            <div class="hm-community-stats">
+                                <div class="hm-community-stat">
+                                    <span id="homeMetricAgents" class="hm-community-value tabular-nums">28</span>
+                                    <span class="hm-community-label">Active agents</span>
+                                </div>
+                                <div class="hm-community-stat">
+                                    <span id="homeMetricUsers" class="hm-community-value tabular-nums">126</span>
+                                    <span class="hm-community-label">Backtests today</span>
+                                </div>
+                                <div class="hm-community-stat">
+                                    <span id="homeMetricTrades" class="hm-community-value tabular-nums">37</span>
+                                    <span class="hm-community-label">Paper trades today</span>
+                                </div>
+                            </div>
+                            <p class="hm-activity-label">Recent Activity</p>
+                            <ul class="hm-activity-list" id="homeCommunityActivity">
+                                <li><span class="hm-act-dot"></span><span>AlphaWolf published a strategy</span><time class="tabular-nums">5m ago</time></li>
+                                <li><span class="hm-act-dot"></span><span>QuantNova completed a backtest</span><time class="tabular-nums">18m ago</time></li>
+                                <li><span class="hm-act-dot"></span><span>Momentum Scout moved to #3</span><time class="tabular-nums">31m ago</time></li>
+                            </ul>
+                            <button class="hm-footer-btn" id="homeModuleCommunityBtn" type="button">Join our Discord community</button>
+                        </article>
+                        </div>
+                    </div>
+                </div>
+                </section>
+
+                <div class="home-pager-hidden" hidden>
+                <section class="home-news-signals" id="homeNewsSignals" aria-label="News and signals">
+                    <div class="home-section-title-row">
+                        <h2 class="home-section-title">News &amp; Signals <span class="nns-source-tag">via Agentic FinSearch</span></h2>
+                        <span class="nns-updated" id="nnsUpdated"></span>
+                        <span class="nns-badge" id="nnsStatusBadge" hidden></span>
+                    </div>
+                    <p class="nns-overview" id="nnsOverview"></p>
+                    <div class="nns-split">
+                        <!-- Phase B honesty: the left column is the broad raw-items feed — not
+                             gated by the signals relevance filter; may include non-Dow tickers
+                             and general-market stories (null ticker, rendered without a chip).
+                             When the items endpoint is unavailable it falls back to Phase A's
+                             one-representative-story-per-signal feed (get_latest_panel_payload). -->
+                        <div class="nns-col" id="nnsFeed"><h3>Latest news</h3><ul class="nns-list" id="nnsFeedList"></ul></div>
+                        <div class="nns-col" id="nnsSignals"><h3>Signals</h3><ul class="nns-list" id="nnsSignalsList"></ul></div>
+                    </div>
+                </section>
+
+                <section class="home-insights">
+                    <h3 class="home-section-title home-insights-heading">Insights from the Lab</h3>
+                    <div class="home-insights-grid">
+                        <article class="home-insight-card">
+                            <span class="icon-shell icon-shell--sm"><svg class="ui-icon"><use href="#icon-chart"/></svg></span>
+                            <h4 class="home-insight-title">Momentum strategies dominate today</h4>
+                            <p class="home-insight-stat tabular-nums">58% of winning trades are momentum-based.</p>
+                            <a class="home-link-btn" href="https://finagent-orchestration.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">View analysis</a>
+                        </article>
+                        <article class="home-insight-card">
+                            <span class="icon-shell icon-shell--sm icon-shell--positive"><svg class="ui-icon"><use href="#icon-shield-check"/></svg></span>
+                            <h4 class="home-insight-title">Risk discipline pays off</h4>
+                            <p class="home-insight-stat tabular-nums">Top agents have 23% lower maximum drawdown.</p>
+                            <a class="home-link-btn" href="https://finagent-orchestration.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">View report</a>
+                        </article>
+                        <article class="home-insight-card">
+                            <span class="icon-shell icon-shell--sm"><svg class="ui-icon"><use href="#icon-users"/></svg></span>
+                            <h4 class="home-insight-title">Diversity drives performance</h4>
+                            <p class="home-insight-stat tabular-nums">Top portfolios hold 12.4 assets on average.</p>
+                            <a class="home-link-btn" href="https://finagent-orchestration.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">View breakdown</a>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="home-resources">
+                    <h3 class="home-section-title home-resources-heading">Resources</h3>
+                    <div class="home-resources-grid">
+                        <a class="home-resource-card" href="https://github.com/Open-Finance-Lab/AgenticTrading" target="_blank" rel="noopener noreferrer">
+                            <span class="icon-shell icon-shell--sm icon-shell--muted"><svg class="ui-icon"><use href="#icon-github"/></svg></span>
+                            <span class="home-resource-copy">
+                                <span class="home-resource-title">GitHub</span>
+                                <span class="home-resource-subtitle">Source code and worked examples</span>
+                            </span>
+                            <svg class="ui-icon home-resource-arrow" aria-hidden="true"><use href="#icon-external-link"/></svg>
+                        </a>
+                        <a class="home-resource-card" href="https://discord.gg/9HnQ6XDG98" target="_blank" rel="noopener noreferrer">
+                            <span class="icon-shell icon-shell--sm icon-shell--discord"><svg class="ui-icon"><use href="#icon-discord"/></svg></span>
+                            <span class="home-resource-copy">
+                                <span class="home-resource-title">Discord Community</span>
+                                <span class="home-resource-subtitle">Talk strategy with other members</span>
+                            </span>
+                            <svg class="ui-icon home-resource-arrow" aria-hidden="true"><use href="#icon-external-link"/></svg>
+                        </a>
+                        <button id="homeResourceLeaderboardBtn" class="home-resource-card home-resource-card--button" type="button">
+                            <span class="icon-shell icon-shell--sm"><svg class="ui-icon"><use href="#icon-trophy"/></svg></span>
+                            <span class="home-resource-copy">
+                                <span class="home-resource-title">Leaderboard</span>
+                                <span class="home-resource-subtitle">See top agents and teams</span>
+                            </span>
+                            <svg class="ui-icon home-resource-arrow" aria-hidden="true"><use href="#icon-arrow-right"/></svg>
+                        </button>
+                        <a class="home-resource-card" href="https://finagent-orchestration.readthedocs.io/en/latest/" target="_blank" rel="noopener noreferrer">
+                            <span class="icon-shell icon-shell--sm"><svg class="ui-icon"><use href="#icon-book"/></svg></span>
+                            <span class="home-resource-copy">
+                                <span class="home-resource-title">Documentation</span>
+                                <span class="home-resource-subtitle">Guides and reference documentation</span>
+                            </span>
+                            <svg class="ui-icon home-resource-arrow" aria-hidden="true"><use href="#icon-external-link"/></svg>
+                        </a>
+                    </div>
+                </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="addAgentModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="addAgentModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="addAgentModalTitle">
+            <button id="addAgentModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="addAgentModalTitle" class="auth-modal-title">Add Agent</h2>
+            <p class="auth-modal-subtitle">Register your own agent and receive a secure access key. Sign in to keep your agents across devices.</p>
+            <div class="add-agent-options">
+                <button id="createBuiltinAgentBtn" class="add-agent-option" type="button">
+                    <strong>Create a Built-in Agent</strong>
+                    <span>Hosted agent powered by a leading AI model — you can also chat with it in our Discord community</span>
+                </button>
+                <button id="connectExternalAgentBtn" class="add-agent-option" type="button">
+                    <strong>Connect an External Agent</strong>
+                    <span>For developers: get an access key to connect your own program</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="createExternalAgentModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="createExternalAgentModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="createExternalAgentModalTitle">
+            <button id="createExternalAgentModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="createExternalAgentModalTitle" class="auth-modal-title">Register External Agent</h2>
+            <p class="auth-modal-subtitle">Each agent keeps its own trading history. Backtest results appear automatically when you select the agent.</p>
+            <form id="createExternalAgentForm" class="auth-form">
+                <label class="auth-field">
+                    <span>Agent name</span>
+                    <input id="externalAgentName" type="text" required maxlength="100" placeholder="my-strategy" autocomplete="off">
+                </label>
+                <label class="auth-field">
+                    <span>Model name (optional)</span>
+                    <input id="externalAgentModel" type="text" maxlength="100" placeholder="gpt-4 / rule-based" autocomplete="off">
+                </label>
+                <label class="auth-field">
+                    <span>Paper Trading Allocated Capital (max $3,000)</span>
+                    <input id="externalAgentCashAllocation" type="number" min="0" max="3000" step="100" value="1000" required aria-describedby="externalAgentCashHint">
+                </label>
+                <p id="externalAgentCashHint" class="credential-hint">Cash reserved from My Portfolio for this agent's paper trading. Backtests start from this amount by default but never spend it.</p>
+                <p id="createExternalAgentError" class="auth-error" hidden></p>
+                <button id="createExternalAgentSubmit" class="auth-submit-btn" type="submit">Create agent</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="createBuiltinAgentModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="createBuiltinAgentModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="createBuiltinAgentModalTitle">
+            <button id="createBuiltinAgentModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="createBuiltinAgentModalTitle" class="auth-modal-title">Create a Built-in Agent</h2>
+            <p class="auth-modal-subtitle">A hosted agent powered by a leading AI model. It appears on your agent cards here and can also be used from our Discord community with <code>/agent</code>.</p>
+            <form id="createBuiltinAgentForm" class="auth-form">
+                <label class="auth-field">
+                    <span>Agent name</span>
+                    <input id="builtinAgentName" type="text" required maxlength="100" placeholder="Momentum Alpha" autocomplete="off">
+                </label>
+                <label class="auth-field">
+                    <span>Model</span>
+                    <!-- Options are written by populateSupportedModelSelects() in app.js.
+                         js/agent-editor.js clones this select's options for the Configure
+                         screen's picker, at editor-open time, so it inherits them too. -->
+                    <select id="builtinAgentModel"></select>
+                </label>
+                <label class="auth-field">
+                    <span>Description (optional)</span>
+                    <input id="builtinAgentDescription" type="text" maxlength="280" placeholder="What makes this agent different?" autocomplete="off">
+                </label>
+                <label class="auth-field">
+                    <span>Paper Trading Allocated Capital (max $3,000)</span>
+                    <input id="builtinAgentCashAllocation" type="number" min="0" max="3000" step="100" value="1000" required aria-describedby="builtinAgentCashHint">
+                </label>
+                <p id="builtinAgentCashHint" class="credential-hint">Cash reserved from My Portfolio for this agent's paper trading. Backtests start from this amount by default but never spend it.</p>
+                <p id="createBuiltinAgentError" class="auth-error" hidden></p>
+                <button id="createBuiltinAgentSubmit" class="auth-submit-btn" type="submit">Create built-in agent</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="duplicateAgentModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="duplicateAgentModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="duplicateAgentModalTitle">
+            <button id="duplicateAgentModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="duplicateAgentModalTitle" class="auth-modal-title">Run on another model</h2>
+            <p class="auth-modal-subtitle">Makes a copy of this agent — same strategy, same instructions — running on a different AI model, so you can compare them side by side. Nothing runs until you press Run Backtest.</p>
+            <form id="duplicateAgentForm" class="auth-form">
+                <label class="auth-field">
+                    <span>Model</span>
+                    <!-- Options are written by openDuplicateAgentModal(): the list
+                         excludes the agent's own model, so it cannot be built here. -->
+                    <select id="duplicateAgentModel"></select>
+                </label>
+                <p id="duplicateAgentError" class="auth-error" hidden></p>
+                <button id="duplicateAgentSubmit" class="auth-submit-btn" type="submit">Create the copy</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="agentCredentialsModal" class="auth-modal" hidden>
+        <div class="auth-modal-backdrop" id="agentCredentialsModalBackdrop"></div>
+        <div class="auth-modal-panel" role="dialog" aria-labelledby="agentCredentialsModalTitle">
+            <button id="agentCredentialsModalClose" class="auth-modal-close" type="button" aria-label="Close">×</button>
+            <h2 id="agentCredentialsModalTitle" class="auth-modal-title">Agent created</h2>
+            <p id="agentCredentialsModalSubtitle" class="auth-modal-subtitle">Your agent is ready. Use the access key below to connect your own program to Agentic Trading Lab. (This is the API key in the SDK and docs.)</p>
+            <p class="credential-warning">One-time key — copy and save it before closing this window. You won't be able to view the full key again.</p>
+            <div class="auth-form">
+                <label class="auth-field">
+                    <span>Access key</span>
+                    <div class="credential-copy-row">
+                        <input id="agentCredentialApiKey" type="text" readonly aria-label="Access key">
+                        <button id="agentCredentialCopyBtn" class="credential-copy-btn" type="button">Copy</button>
+                    </div>
+                </label>
+                <button id="agentCredentialDoneBtn" class="auth-submit-btn" type="button">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playground -->
+    <div id="playgroundView" class="page-view playground-view" style="display: none;">
+        <div class="subtab-bar playground-subtabs">
+            <button class="subtab-btn active" data-playground-tab="agents">My Agents</button>
+            <button class="subtab-btn" data-playground-tab="backtest">Backtest</button>
+            <button class="subtab-btn" data-playground-tab="paper">Paper Trading</button>
+        </div>
+        <div id="playgroundAgentsPanel" class="playground-panel">
+            <!-- My Portfolio: Overview + Capital Allocation (live ledger when signed in, sample data for guests) -->
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">My Portfolio
+                        <span id="portfolioSampleBadge" title="Illustrative sample data — not a real brokerage account." style="display:inline-block; vertical-align:middle; margin-left:8px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.04em; background:rgba(245,158,11,.15); color:#f59e0b; border:1px solid rgba(245,158,11,.4);">SAMPLE DATA</span>
+                    </h2>
+                </div>
+            </div>
+
+            <div class="portfolio-top-grid">
+                <section class="section-card pf-overview-card" id="portfolioOverviewCard" aria-label="Portfolio Overview">
+                    <!-- filled by portfolio.js -->
+                </section>
+                <section class="section-card allocation-card pf-allocation-card">
+                    <h3 class="allocation-title">Capital Allocation</h3>
+                    <div class="allocation-body">
+                        <div class="allocation-chart-wrap">
+                            <canvas id="agentAllocationChart"></canvas>
+                        </div>
+                        <div class="allocation-detail">
+                            <div class="allocation-legend-host" id="agentAllocationLegend"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- My Agents -->
+            <div class="agents-section">
+                <div class="agents-section-head">
+                    <div class="agents-section-title-row">
+                        <h2 class="page-title">My Agents</h2>
+                        <a id="agentsSectionDiscordBtn" class="discord-nav-btn discord-nav-btn-sm" data-discord-link href="https://discord.gg/9HnQ6XDG98" target="_blank" rel="noopener noreferrer">Open Discord</a>
+                    </div>
+                    <div class="agent-toolbar">
+                        <div class="agent-toolbar-search">
+                            <svg class="agent-toolbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input id="agentSearchInput" type="search" placeholder="Search agents..." aria-label="Search agents">
+                        </div>
+                        <div class="agent-view-toggle" role="group" aria-label="View mode">
+                            <button id="agentViewGrid" class="agent-view-btn active" type="button" aria-label="Grid view" title="Grid view">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                            </button>
+                            <button id="agentViewList" class="agent-view-btn" type="button" aria-label="List view" title="List view">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <button id="addAgentBtnToolbar" class="home-btn home-btn-primary agent-toolbar-add" type="button">Add Agent +</button>
+                    </div>
+                </div>
+                <div id="agentsCategories">
+                    <section class="agents-category" data-category="prompted">
+                        <div class="agents-category-head">
+                            <div class="agents-category-heading">
+                                <span class="agents-category-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                </span>
+                                <h3 class="agents-category-title">LLMs</h3>
+                                <span id="agentsCountPrompted" class="agents-category-count" hidden></span>
+                            </div>
+                            <p class="agents-category-sub">Write a trading instruction for an AI model and backtest it on market data.</p>
+                            <!-- Filled by renderAgentMarketChips(); the chips ride
+                                 #agentsCategories' delegated click handler. -->
+                            <div id="agentsMarketChips" class="marketplace-category-chips agents-market-chips" role="group" aria-label="Filter by market"></div>
+                        </div>
+                        <div id="agentsGridPrompted" class="agents-grid">
+                            <!-- Loading skeletons: visible pre-JS and while the first
+                                 agents fetch runs. No removal code needed — every render
+                                 path overwrites this grid's innerHTML (pinned by
+                                 test_frontend_fast_boot.py). -->
+                            <div class="section-card agent-card agent-card--skeleton" aria-hidden="true"></div>
+                            <div class="section-card agent-card agent-card--skeleton" aria-hidden="true"></div>
+                            <div class="section-card agent-card agent-card--skeleton" aria-hidden="true"></div>
+                        </div>
+                        <div id="agentsGridFooterPrompted" class="agents-grid-footer" hidden></div>
+                        <p id="agentsEmptyPrompted" class="control-helper" hidden>You don't have any agents yet. Create one and test your first trading idea.</p>
+                    </section>
+                    <section class="agents-category" data-category="open">
+                        <div class="agents-category-head">
+                            <div class="agents-category-heading">
+                                <span class="agents-category-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                                </span>
+                                <h3 class="agents-category-title">Open Agents</h3>
+                                <span id="agentsCountOpen" class="agents-category-count" hidden></span>
+                            </div>
+                            <p class="agents-category-sub">Open-source trading agents like AI Hedge Fund. Add them from Community, then customize and backtest.</p>
+                        </div>
+                        <div id="agentsGridOpen" class="agents-grid">
+                            <div class="section-card agent-card agent-card--skeleton" aria-hidden="true"></div>
+                        </div>
+                        <div id="agentsGridFooterOpen" class="agents-grid-footer" hidden></div>
+                        <p id="agentsEmptyOpen" class="control-helper" hidden>No open agents yet. Add a ready-made strategy like AI Hedge Fund from Community.</p>
+                    </section>
+                    <!-- Locked shelves. Crypto is a display-only price ticker
+                         (quotes.py, never wired to the engine) and futures exist
+                         nowhere in the repo, so these rows are inert on purpose:
+                         no grid, no chips, no focus stop, nothing clickable. They
+                         must read as "not built yet", never as "built and broken".
+                         Adding a category slug for either would make them
+                         selectable in Configure and cloneable from Community. -->
+                    <section class="agents-category agents-category--locked" data-category="crypto" aria-disabled="true">
+                        <div class="agents-category-head">
+                            <div class="agents-category-heading">
+                                <span class="agents-category-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                </span>
+                                <h3 class="agents-category-title">Crypto</h3>
+                                <span class="agents-category-tag">Not yet available</span>
+                            </div>
+                            <p class="agents-category-sub">Round-the-clock crypto backtesting isn't built yet. Nothing here can be run.</p>
+                        </div>
+                    </section>
+                    <section class="agents-category agents-category--locked" data-category="futures" aria-disabled="true">
+                        <div class="agents-category-head">
+                            <div class="agents-category-heading">
+                                <span class="agents-category-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                </span>
+                                <h3 class="agents-category-title">Futures</h3>
+                                <span class="agents-category-tag">Not yet available</span>
+                            </div>
+                            <p class="agents-category-sub">Futures contracts aren't built yet. Nothing here can be run.</p>
+                        </div>
+                    </section>
+                    <section class="agents-category" data-category="external">
+                        <div class="agents-category-head">
+                            <div class="agents-category-heading">
+                                <span class="agents-category-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+                                </span>
+                                <h3 class="agents-category-title">For Developers: Connected Agents</h3>
+                                <span id="agentsCountExternal" class="agents-category-count" hidden></span>
+                            </div>
+                            <p class="agents-category-sub">Run your own trading program against our backtests. Requires an access key.</p>
+                        </div>
+                        <div id="agentsGridExternal" class="agents-grid">
+                            <div class="section-card agent-card agent-card--skeleton" aria-hidden="true"></div>
+                        </div>
+                        <div id="agentsGridFooterExternal" class="agents-grid-footer" hidden></div>
+                        <p id="agentsEmptyExternal" class="control-helper" hidden>No agents match your search.</p>
+                    </section>
+                </div>
+                <p id="agentsErrorState" class="control-helper" hidden style="color:#f87171;">Couldn't reach the server to load agents. Check your connection and try again.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Agent Editor -->
+    <div id="agentEditorView" class="agent-editor-view" hidden>
+        <header class="agent-editor-header">
+            <button id="agentEditorBackBtn" class="agent-editor-back-btn" type="button" aria-label="Back to My Agents">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+                Back to My Agents
+            </button>
+            <div class="agent-editor-title-wrap">
+                <input id="agentEditorNameInput" class="agent-editor-name-input" type="text" maxlength="100" placeholder="Agent name" aria-label="Agent name" autocomplete="off">
+                <p id="agentEditorMeta" class="agent-editor-meta"></p>
+                <label id="agentEditorModelField" class="agent-editor-model-field" for="agentEditorModelSelect">
+                    <span class="agent-editor-model-label">Model</span>
+                    <select id="agentEditorModelSelect" class="agent-editor-model-select" aria-label="Agent model"></select>
+                </label>
+                <div id="agentEditorManagedModelField" class="agent-editor-managed-model-field" aria-label="Hosted AI model" hidden>
+                    <span class="agent-editor-model-label">Hosted AI model</span>
+                    <strong id="agentEditorManagedModelValue" class="agent-editor-managed-model-value">OpenRouter · nvidia/nemotron-3-nano-30b-a3b</strong>
+                    <span class="agent-editor-managed-model-note">Managed for you by Agentic Trading Lab</span>
+                </div>
+                <label id="agentEditorCategoryField" class="agent-editor-model-field" for="agentEditorCategorySelect">
+                    <span class="agent-editor-model-label">Market</span>
+                    <select id="agentEditorCategorySelect" class="agent-editor-model-select" aria-label="Which market this agent trades"></select>
+                </label>
+                <textarea id="agentEditorDescription" class="agent-editor-description" rows="2" maxlength="280" placeholder="Optional description for this agent…" aria-label="Agent description"></textarea>
+                <div id="agentEditorBrokerPanel" class="agent-editor-broker section-card compact">
+                    <div class="agent-editor-broker-head">
+                        <h3 class="agent-editor-intro-title">Robinhood live trading</h3>
+                        <span id="agentEditorRobinhoodStatus" class="agent-editor-broker-status">Checking…</span>
+                    </div>
+                    <p class="agent-editor-intro-text">Connect your Robinhood Agentic account to run this agent with real money. Orders only execute when live trading is enabled and the server execute switch is on.</p>
+                    <div id="agentEditorRobinhoodMeta" class="agent-editor-broker-meta" hidden></div>
+                    <label class="agent-editor-live-toggle">
+                        <input id="agentEditorLiveTradingEnabled" type="checkbox">
+                        <span>Enable live trading for this agent</span>
+                    </label>
+                    <div class="agent-editor-broker-actions">
+                        <button id="agentEditorConnectRobinhoodBtn" class="home-btn home-btn-secondary" type="button">Connect Robinhood</button>
+                        <button id="agentEditorDisconnectRobinhoodBtn" class="home-btn home-btn-secondary" type="button" hidden>Disconnect</button>
+                        <button id="agentEditorRunLiveBtn" class="home-btn home-btn-primary" type="button">Run Live</button>
+                    </div>
+                    <p id="agentEditorLiveRunResult" class="agent-editor-live-result" hidden></p>
+                </div>
+            </div>
+            <div class="agent-editor-header-actions">
+                <span id="agentEditorDirtyBadge" class="agent-editor-dirty-badge" hidden>Unsaved changes</span>
+                <button id="agentEditorRunBacktestBtn" class="home-btn home-btn-secondary" type="button">Run Backtest</button>
+                <button id="agentEditorSaveBtn" class="home-btn home-btn-primary" type="button">Save</button>
+            </div>
+        </header>
+        <div class="agent-editor-body">
+            <div class="agent-editor-layout">
+                <div class="agent-editor-main">
+                    <div class="agent-capital-card section-card compact">
+                        <h3 class="agent-capital-title">Allocated Capital</h3>
+                        <div class="agent-capital-grid">
+                            <label class="agent-capital-field" for="agentEditorCashAllocation">
+                                <span class="agent-capital-label">Paper Trading <span class="agent-capital-max">max $3,000</span></span>
+                                <input id="agentEditorCashAllocation" class="agent-capital-input" type="number" min="0" max="3000" step="100" placeholder="1000" aria-label="Paper Trading Allocated Capital">
+                                <span class="agent-capital-note">Reserved from your My Portfolio balance while this agent paper-trades. Backtests use a separate simulated amount and never touch it.</span>
+                            </label>
+                            <label class="agent-capital-field" for="agentEditorBacktestAllocation">
+                                <span class="agent-capital-label">Backtesting <span class="agent-capital-max">max $3,000</span></span>
+                                <input id="agentEditorBacktestAllocation" class="agent-capital-input" type="number" min="1" max="3000" step="100" placeholder="1000" aria-label="Backtest Allocated Capital">
+                                <span class="agent-capital-note">Simulated only. Never spends real cash.</span>
+                            </label>
+                        </div>
+                        <p id="agentCapitalRealMoneyNote" class="control-helper">Every test here uses simulated money. Real money is involved only if you explicitly connect a brokerage account and turn on live trading.</p>
+                    </div>
+                    <div id="agentEditorSimplePanel" class="agent-editor-simple section-card compact">
+                        <h3 class="agent-editor-intro-title">Trading instruction</h3>
+                        <p class="agent-editor-intro-text">Tell the agent how to trade in plain language. Each market hour it sees prices and its portfolio, follows your instruction, and decides what to buy or sell.</p>
+                        <textarea id="agentEditorSimpleInstruction" rows="6" maxlength="8000" placeholder="e.g. Spread the money across a few of the strongest available stocks. Buy on meaningful dips and take profits after strong run-ups." aria-label="Trading instruction"></textarea>
+                        <p class="agent-editor-simple-note">Leave this empty and the agent uses the platform's default trading strategy.</p>
+                        <details class="agent-editor-default-details">
+                            <summary>See the default instruction</summary>
+                            <p id="agentEditorDefaultInstructionText" class="agent-editor-default-text"></p>
+                        </details>
+                        <p id="agentEditorSimpleReplaceNote" class="agent-editor-simple-note" hidden>This agent currently uses a custom multi-step strategy. Saving this instruction replaces it.</p>
+                    </div>
+                    <div id="agentEditorAiHedgeFundPanel" class="agent-editor-simple section-card compact" hidden>
+                        <h3 class="agent-editor-intro-title">AI Hedge Fund analyst panel</h3>
+                        <p class="agent-editor-intro-text">Choose the analysts that shape this agent's strategy. The AI model and its settings are hosted and managed by Agentic Trading Lab.</p>
+                        <div id="agentEditorAiHedgeFundAnalysts" class="agent-editor-analyst-grid" role="group" aria-label="AI Hedge Fund analysts"></div>
+                        <label class="auth-field agent-editor-credential-field" for="agentEditorFinancialDatasetsKey">
+                            <span>Financial Datasets access key (from financialdatasets.ai)</span>
+                            <input id="agentEditorFinancialDatasetsKey" type="password" autocomplete="new-password" placeholder="Leave blank to keep the stored key" aria-describedby="agentEditorFinancialDatasetsStatus">
+                        </label>
+                        <p id="agentEditorFinancialDatasetsStatus" class="agent-editor-simple-note">Checking credential…</p>
+                        <button id="agentEditorFinancialDatasetsRemove" class="agent-editor-credential-remove" type="button" hidden>Remove stored key</button>
+                        <p class="agent-editor-simple-note">Encrypted and stored securely. For your protection, it is never shown again after you save.</p>
+                    </div>
+                    <p id="agentEditorSaveStatus" class="agent-editor-save-status" hidden></p>
+                    <p class="agent-editor-hint">Tip: press <kbd>Ctrl</kbd>+<kbd>S</kbd> to save.</p>
+                </div>
+                <aside class="agent-editor-history" aria-label="Backtest history">
+                    <div class="agent-editor-history-card section-card compact">
+                        <div class="agent-editor-history-head">
+                            <h3 class="agent-editor-history-title">Backtest history</h3>
+                            <span id="agentEditorRunCount" class="agent-editor-run-count">0 runs</span>
+                        </div>
+                        <p class="agent-editor-history-hint">All backtest runs for this agent. Click a run to open it in Playground.</p>
+                        <div id="agentEditorRunHistory" class="agent-editor-run-history" role="list"></div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content: 3-Column Layout (Playground / Backtest) -->
+    <div class="main-container playground-panel playground-backtest-panel" style="display: none;">
+        <!-- Left Panel: selected / running run config (read-only) -->
+        <aside class="left-panel">
+            <section class="control-section">
+                <h3 class="control-title">Run config</h3>
+                <p id="backtestConfigEmpty" class="control-helper">No backtests yet. Run one from My Agents.</p>
+                <dl id="backtestConfigList" class="backtest-config-list" hidden>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Agent</dt>
+                        <dd id="backtestConfigAgent">—</dd>
+                    </div>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Model</dt>
+                        <dd id="backtestConfigModel">—</dd>
+                    </div>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Market</dt>
+                        <dd><span id="backtestConfigMarketData">—</span><span id="backtestConfigUniverse" class="backtest-config-secondary-value"></span></dd>
+                    </div>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Date range</dt>
+                        <dd id="backtestConfigWindow">—</dd>
+                    </div>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Initial capital</dt>
+                        <dd id="backtestConfigCapital">—</dd>
+                    </div>
+                    <div class="backtest-config-row backtest-config-core-row">
+                        <dt>Billing</dt>
+                        <dd id="backtestConfigBilling">—</dd>
+                    </div>
+
+                    <div class="backtest-config-detail-group">
+                        <details class="backtest-config-details" id="backtestConfigInstructionDetails">
+                            <summary>Show instruction</summary>
+                            <div class="backtest-config-row backtest-config-detail-row" id="backtestConfigPromptRow" hidden>
+                                <dt>Instruction</dt>
+                                <dd id="backtestConfigPrompt" class="backtest-config-prompt">—</dd>
+                            </div>
+                        </details>
+
+                        <details class="backtest-config-details">
+                            <summary>Show advanced details</summary>
+                            <div class="backtest-config-detail-grid">
+                                <div class="backtest-config-detail-cell"><span>Symbols</span><strong id="backtestConfigSymbols">—</strong></div>
+                                <div class="backtest-config-detail-cell"><span>Timeframe</span><strong id="backtestConfigTimeframe">—</strong></div>
+                                <div class="backtest-config-detail-cell"><span>Decision method</span><strong id="backtestConfigDecisionSource">—</strong></div>
+                                <div class="backtest-config-detail-cell"><span>Status</span><strong id="backtestConfigStatus">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigNativeCapitalRow" hidden><span>CNY trading capital</span><strong id="backtestConfigNativeCapital">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigFxSourceRow" hidden><span>FX source</span><strong id="backtestConfigFxSource">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigFxRateRow" hidden><span>Start FX rate</span><strong id="backtestConfigFxRate">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigTransactionCostsRow" hidden><span>Transaction costs</span><strong id="backtestConfigTransactionCosts">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigCostProfileRow" hidden><span>Cost profile</span><strong id="backtestConfigCostProfile">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigTotalCostsRow" hidden><span>Total costs</span><strong id="backtestConfigTotalCosts">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigMarketRulesRow" hidden><span>A-share market rules</span><strong id="backtestConfigMarketRules">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigRuleRejectionsRow" hidden><span>Rule rejections</span><strong id="backtestConfigRuleRejections">—</strong></div>
+                                <div class="backtest-config-detail-cell" id="backtestConfigBaselineRulesRow" hidden><span>Baseline rule delays</span><strong id="backtestConfigBaselineRules">—</strong></div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="backtest-config-meta-row">
+                        <span>Started <strong id="backtestConfigStarted">—</strong></span>
+                        <span>Market data <strong id="backtestConfigMarketDataMeta">—</strong></span>
+                    </div>
+                </dl>
+
+                <div id="backtestRunProgress" class="backtest-run-progress section-card compact" hidden>
+                    <div class="backtest-run-progress-head">
+                        <h4 class="backtest-run-progress-title">Backtest in progress</h4>
+                        <span id="backtestRunElapsed" class="backtest-run-elapsed">0:00</span>
+                    </div>
+                    <div class="backtest-run-progress-track" aria-hidden="true">
+                        <div id="backtestRunProgressBar" class="backtest-run-progress-bar"></div>
+                    </div>
+                    <p id="backtestRunProgressMessage" class="backtest-run-progress-message">Starting…</p>
+                    <p class="backtest-run-progress-hint">Multi-step strategies can take several minutes (limit: 60 minutes).</p>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Center Panel: Charts & Decision Log -->
+        <section class="center-panel">
+            <!-- Trading Performance Section -->
+            <div class="section-card performance-card">
+                <div class="section-header">
+                    <div class="performance-title-row">
+                        <h2>Trading Performance</h2>
+                        <span id="backtestDataSourceBadge" class="data-source-badge" hidden></span>
+                    </div>
+                    <div class="chart-controls">
+                        <select id="backtestRunSelect" class="filter-select backtest-run-select" aria-label="Select backtest run" hidden>
+                            <option value="">Latest run</option>
+                        </select>
+                        <button class="time-btn active">1D</button>
+                        <button class="time-btn">1W</button>
+                        <button class="time-btn">1M</button>
+                        <button class="time-btn">ALL</button>
+                    </div>
+                </div>
+
+                <!-- Shown only when the index benchmarks are missing because the
+                     market-data provider was unreachable, so a benchmark-free
+                     chart is never mistaken for an agent that has no benchmark. -->
+                <p id="chartBaselineNotice" class="chart-baseline-notice" hidden>
+                    ⚠ Index benchmarks unavailable — the market-data provider could not be
+                    reached. Your agent's curve is complete; reload to retry the benchmarks.
+                </p>
+
+                <div id="performanceLegend" class="performance-legend" role="group" aria-label="Chart series visibility"></div>
+
+                <div class="chart-container">
+                    <canvas id="performanceChart" role="img" aria-label="Portfolio value comparison chart" aria-describedby="performanceComparisonCaption" aria-details="performanceComparison"></canvas>
+                </div>
+
+                <section id="performanceComparison" class="performance-comparison" aria-labelledby="performanceComparisonTitle">
+                    <div class="performance-comparison-header">
+                        <h3 id="performanceComparisonTitle">Performance comparison</h3>
+                        <p id="performanceComparisonCaption">Same capital, date range, and sampling interval.</p>
+                    </div>
+                    <div class="performance-comparison-scroll" tabindex="0" aria-label="Performance comparison table">
+                        <table>
+                            <thead id="performanceComparisonHead"></thead>
+                            <tbody id="performanceComparisonBody"></tbody>
+                        </table>
+                    </div>
+                    <p id="performanceComparisonStatus" class="performance-comparison-status" role="status" aria-live="polite"></p>
+                </section>
+            </div>
+
+        </section>
+
+        <!-- Right Panel: run-scoped Trading Log -->
+        <aside class="right-panel">
+            <section class="section-card trading-log-card" aria-labelledby="tradingLogTitle">
+                <div class="section-header trading-log-header">
+                    <div>
+                        <h2 id="tradingLogTitle">Trading Log</h2>
+                        <p class="trading-log-summary">
+                            <span id="tradingLogCount">0 orders</span>
+                            <span id="tradingLogStatusSummary"></span>
+                        </p>
+                    </div>
+                    <div class="log-controls">
+                        <label class="sr-only" for="tradingLogFilter">Filter Trading Log orders</label>
+                        <select class="filter-select" id="tradingLogFilter">
+                            <option value="all">All Orders</option>
+                            <option value="buy">Buys Only</option>
+                            <option value="sell">Sells Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="tradingLogFeed" class="trading-log-scroll" role="list" tabindex="0" aria-label="Trading Log orders">
+                    <p class="trading-log-empty">Run a backtest to see orders here.</p>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <!-- Paper Trading View (Playground / Paper Trading) -->
+    <div id="paperTradingView" class="paper-trading-view playground-panel playground-paper-panel" style="display: none;">
+        <div class="paper-container">
+            <!-- Left Panel: Account Summary -->
+            <aside class="paper-left-panel">
+                <div class="paper-card">
+                    <h3>Account Summary</h3>
+                    <div class="paper-metric">
+                        <span class="paper-label">Portfolio Value</span>
+                        <span class="paper-value" id="portfolioValue">--</span>
+                    </div>
+                    <div class="paper-metric">
+                        <span class="paper-label">Cash Available</span>
+                        <span class="paper-value" id="cashValue">--</span>
+                    </div>
+                    <div class="paper-metric">
+                        <span class="paper-label">Buying Power</span>
+                        <span class="paper-value" id="buyingPowerValue">--</span>
+                    </div>
+                    <div class="paper-metric">
+                        <span class="paper-label">Day P&L</span>
+                        <span class="paper-value" id="dayPnL">--</span>
+                    </div>
+                    <button class="paper-refresh-btn" onclick="refreshPaperData()">Refresh</button>
+                </div>
+
+                <div class="paper-card">
+                    <h3>Open Positions</h3>
+                    <div id="positionsList" class="positions-list">
+                        <div class="loading">Loading positions...</div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center Panel: Equity Curve -->
+            <section class="paper-center-panel">
+                <div class="paper-card">
+                    <h3>Portfolio Value</h3>
+                    <div class="chart-container">
+                        <canvas id="paperEquityChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Recent Trades -->
+            <aside class="paper-right-panel">
+                <div class="paper-card">
+                    <h3>Recent Trades</h3>
+                    <div id="tradesList" class="trades-list">
+                        <div class="loading">Loading trades...</div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- My Trading Algo View -->
+    <div id="myTradingAlgoView" class="my-trading-algo-view" style="display: none;">
+        <div class="algo-page-layout">
+            <aside class="algo-chat-panel section-card">
+                <div class="algo-panel-header">
+                    <h2>Strategy Assistant</h2>
+                    <p>Chat with Claude; backtests use Alpaca historical data and multi-step runs can take several minutes.</p>
+                </div>
+                <div id="algoChatMessages" class="algo-chat-messages">
+                    <div class="algo-chat-msg bot">
+                        <div class="algo-chat-bubble">
+                            Welcome to <strong>My Trading Algo</strong>.<br><br>
+                            <strong>Leaderboard</strong> is mock competition data. After you edit and <strong>Execute</strong>, your strategy appears on <strong>Backtest</strong> (gold curve vs DJIA / Buy-and-Hold).
+                        </div>
+                    </div>
+                </div>
+                <div class="algo-chat-input-row">
+                    <input id="algoChatInput" type="text" class="algo-chat-input" placeholder="e.g. Monitor Elon Musk on Twitter, stop loss at 3%…" autocomplete="off">
+                    <button id="algoChatSendBtn" class="algo-chat-send-btn" type="button">Send</button>
+                </div>
+            </aside>
+
+            <main class="algo-blocks-panel">
+                <div class="algo-blocks-toolbar">
+                    <div>
+                        <h2>Trading Algo</h2>
+                        <p class="algo-blocks-subtitle">Four-module pipeline: Retrieval → Signal → Execution → Risk</p>
+                    </div>
+                    <div class="algo-toolbar-actions">
+                        <input id="algoTeamName" type="text" class="algo-team-name-input" placeholder="Team name (optional)" value="Trump Twitter Algo">
+                        <button id="executeAlgoBtn" class="execute-algo-btn" type="button">▶ Execute Algo</button>
+                    </div>
+                </div>
+
+                <div class="algo-blocks-grid">
+                    <section class="algo-block-card" data-block="info_retrieval">
+                        <div class="algo-block-head">
+                            <span class="algo-block-num">1</span>
+                            <h3>Info Retrieval</h3>
+                        </div>
+                        <textarea id="blockInfoRetrieval" class="algo-block-textarea" rows="3"></textarea>
+                    </section>
+
+                    <section class="algo-block-card" data-block="signal_transfer">
+                        <div class="algo-block-head">
+                            <span class="algo-block-num">2</span>
+                            <h3>Signal Transfer</h3>
+                        </div>
+                        <textarea id="blockSignalTransfer" class="algo-block-textarea" rows="3"></textarea>
+                    </section>
+
+                    <section class="algo-block-card" data-block="trading_algorithm">
+                        <div class="algo-block-head">
+                            <span class="algo-block-num">3</span>
+                            <h3>Trading Algorithm</h3>
+                        </div>
+                        <textarea id="blockTradingAlgorithm" class="algo-block-textarea" rows="3"></textarea>
+                    </section>
+
+                    <section class="algo-block-card" data-block="stop_loss_take_profit">
+                        <div class="algo-block-head">
+                            <span class="algo-block-num">4</span>
+                            <h3>Stop Loss / Take Profit</h3>
+                        </div>
+                        <textarea id="blockStopLoss" class="algo-block-textarea" rows="3"></textarea>
+                    </section>
+                </div>
+
+                <div id="algoExecuteStatus" class="algo-execute-status" hidden></div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Competition -->
+    <div id="competitionView" class="page-view competition-view" style="display: none;">
+        <div class="subtab-bar competition-subtabs">
+            <button class="subtab-btn active" data-competition-tab="leaderboard">Competition Leaderboard</button>
+            <button class="subtab-btn" data-competition-tab="live">Live Trading Leaderboard</button>
+            <button class="subtab-btn" data-competition-tab="participants">Participating Teams</button>
+            <button class="subtab-btn" data-competition-tab="about">About</button>
+        </div>
+        <div id="competitionParticipantsPanel" class="competition-panel participants-panel" style="display: none;">
+            <div class="participants-empty-wrap">
+                <div class="participants-empty" id="participantsEmptyState">
+                    <p class="participants-empty-title">Season hasn't started yet</p>
+                    <p class="participants-empty-text">Participating teams will appear here when the contest season opens. The Ranking board shows AI models and baseline strategies only.</p>
+                </div>
+            </div>
+            <div class="participants-grid" id="participantsGrid" hidden></div>
+        </div>
+        <div id="competitionAboutPanel" class="competition-panel" style="display: none;">
+            <div class="about-grid">
+                <div class="section-card">
+                    <h3 class="section-title">Competition Overview</h3>
+                    <p class="about-text">SecureFinAI Contest 2026 is a paper-trading competition for AI-powered agents. The contest is currently in <strong>Preseason</strong>. Participating teams join when the season starts (registration Aug 2026).</p>
+                </div>
+                <div class="section-card">
+                    <h3 class="section-title">Live Trading Leaderboard</h3>
+                    <p class="about-text">This board runs <strong>forward</strong>, in seasons of <strong>two weeks</strong>, Monday to Friday. &ldquo;Live&rdquo; describes the direction, not the money: this is <strong>simulated trading on real market data</strong> &mdash; no broker account, no real capital, and no order ever leaves this system.</p>
+                    <p class="about-text">Each night after the 16:00 ET cash close, every entry is advanced one trading day: the model sees that day's real bars for the first time and its portfolio carries forward from where the previous day left it. Nobody &mdash; including us &mdash; knows what the next bar does when an entry locks, which is what separates this board from the fixed-window Competition one.</p>
+                    <p class="about-text">Seasons do not accumulate. Every season starts flat at $10,000, ranks only the days inside it, and ends. Entries do not carry over, so joining is a per-season decision.</p>
+                    <p class="about-text">If a night's advance fails, that day is <strong>marked as a gap</strong> and positions carry forward unchanged. It is never quietly re-run days later against a market that has already moved.</p>
+                    <p class="about-text about-text-muted">We are in <strong>Season 0</strong>, the shakedown season: the engine that advances it is not deployed yet, so nothing on this tab is a standing. Until it ships, the board renders in preview and says so across the top. Season 1 is the first one that will count.</p>
+                </div>
+                <div class="section-card">
+                    <h3 class="section-title">Competition Leaderboard</h3>
+                    <p class="about-text">Ranking is a <strong>backtest leaderboard</strong>, not live trading. Each entry is an hourly backtest over <strong>2026-04-15 → 2026-05-15</strong> (one-month window), comparing leading AI models, baseline strategies, and market indices. Official rank is by final portfolio value.</p>
+                </div>
+                <div class="section-card compact">
+                    <h3 class="section-title">Schedule</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">Phase</span>
+                        <span class="metric-value">Preseason</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Registration</span>
+                        <span class="metric-value">Aug 1 – Aug 31</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Trading Window</span>
+                        <span class="metric-value">Sep 1 – Oct 30</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Results</span>
+                        <span class="metric-value">Nov 5</span>
+                    </div>
+                </div>
+                <div class="section-card compact">
+                    <h3 class="section-title">Rules</h3>
+                    <ul class="about-list">
+                        <li>Paper trading only — no real capital at risk</li>
+                        <li>Agents must trade within the assigned asset universe</li>
+                        <li>Maximum 10 trades per day per agent</li>
+                        <li>All decisions must be logged and auditable</li>
+                    </ul>
+                </div>
+                <div class="section-card compact">
+                    <h3 class="section-title">Evaluation Metrics</h3>
+                    <ul class="about-list">
+                        <li>Official rank by final portfolio value (Ranking)</li>
+                        <li>Also reported: cumulative return, Sharpe, max drawdown</li>
+                        <li>Entry types: Model, Baseline Strategy, Market Index</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard View (Competition / Leaderboard) -->
+    <div id="leaderboardView" class="leaderboard-view competition-panel competition-leaderboard-panel" style="display: none;">
+        <div class="leaderboard-container compact">
+            <!-- Contest identity (merged from former standalone banner) -->
+            <div class="leaderboard-contest-header">
+                <div class="contest-identity">
+                    <div class="contest-title-row">
+                        <h2 class="contest-title">SecureFinAI Contest 2026</h2>
+                        <span class="status-badge upcoming contest-live-badge">Upcoming</span>
+                    </div>
+                    <p class="contest-subtitle" id="boardSubtitle">Sep 1 – Oct 30, 2026</p>
+                    <!-- Competition-only, and hidden on the live board by
+                         leaderboard.js. The board name and the first subtitle
+                         are rewritten per board; this line is not, so left
+                         alone it captions the Live Trading Leaderboard as a
+                         SecureFinAI Lab contest event, which it is not. -->
+                    <p class="contest-subtitle" id="contestOrganizerLine">Organized by SecureFinAI Lab with Agentic Trading Lab.</p>
+                </div>
+                <div class="contest-actions">
+                    <!-- Opens the SecureFinAI Contest 2026 rules modal, which
+                         describes a fixed window and a registration deadline —
+                         neither of which governs a season. Hidden with the
+                         organizer line above. -->
+                    <button id="competitionRulesBtn" class="agent-action-btn agent-action-secondary contest-action-btn" type="button">Rules</button>
+                    <a class="discord-nav-btn discord-nav-btn-sm" href="https://discord.gg/9HnQ6XDG98" target="_blank" rel="noopener noreferrer">Join our Discord community</a>
+                </div>
+            </div>
+            <!-- Live Trading season chrome. Hidden entirely on the Competition board:
+                 every element below describes a season, and a season is the one
+                 thing the fixed contest window is not. -->
+            <!-- Ships with real text rather than empty. The boot stylesheet
+                 reveals this element for ?view=live before any script runs, and
+                 an empty div revealed at boot is indistinguishable from no
+                 disclaimer. leaderboard.js replaces the body once the payload
+                 names the window the curves actually came from. -->
+            <div id="seasonPreviewBanner" class="season-preview-banner" role="status" hidden><strong>Preview — the season engine is not deployed.</strong><span> Season 0 has not been run: nothing on this tab is a live standing, and no ranking on it counts.</span></div>
+
+            <section id="seasonStrip" class="season-strip" aria-label="Season status" hidden>
+                <div class="season-strip-top">
+                    <div class="season-identity">
+                        <span class="season-badge" id="seasonBadge">Season —</span>
+                        <span class="season-dates" id="seasonDates">—</span>
+                    </div>
+                    <div class="season-entry-state" id="seasonEntryState">
+                        <span class="season-entry-dot" aria-hidden="true"></span>
+                        <span id="seasonEntryText">—</span>
+                    </div>
+                </div>
+                <div class="season-strip-progress">
+                    <div class="season-progress-track" role="progressbar" id="seasonProgressBar"
+                         aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"
+                         aria-label="Trading days completed this season">
+                        <div class="season-progress-fill" id="seasonProgressFill" style="width: 0%"></div>
+                    </div>
+                    <span class="season-progress-label" id="seasonProgressLabel">—</span>
+                    <span class="season-next-advance" id="seasonNextAdvance">—</span>
+                </div>
+                <p class="season-reset-note">
+                    Every season starts flat at $10,000 and ranks only the days inside it.
+                    Entries do not carry over &mdash; re-enter each season.
+                </p>
+            </section>
+
+            <!-- Missed nights are a hole in a cumulative curve, so they are stated
+                 rather than smoothed over. Copy differs by failure_kind on purpose:
+                 "the market was flat" and "our job died" must never read alike. -->
+            <ul id="seasonGaps" class="season-gaps" aria-label="Days this season did not advance" hidden></ul>
+
+            <!-- Combined Header with Stats + Controls -->
+            <div class="leaderboard-header-bar compact">
+                <!-- Left: Stats -->
+                <div class="header-stats compact">
+                    <div class="stat-item compact">
+                        <!-- Relabelled per board: the value below is the
+                             contest phase on Competition and the season number
+                             on the live board, and "Phase: Season 0" captions
+                             one with the other's noun. -->
+                        <span class="stat-label" id="boardPhaseLabel">Phase</span>
+                        <span class="stat-value" id="totalTeams">Preseason</span>
+                    </div>
+                    <div class="stat-item compact">
+                        <span class="stat-label">Window</span>
+                        <span class="stat-value" id="tradingWindow">—</span>
+                    </div>
+                    <div class="stat-item compact">
+                        <span class="stat-label">Updated</span>
+                        <span class="stat-value" id="lastUpdate">—</span>
+                    </div>
+                    <div class="stat-item compact">
+                        <span class="stat-label">Leader</span>
+                        <span class="stat-value" id="leaderTeam">—</span>
+                    </div>
+                </div>
+
+                <!-- Right: Controls -->
+                <div class="header-controls compact">
+                    <div class="curve-picker" id="curvePicker">
+                        <button type="button" class="curve-picker-trigger" id="curvePickerTrigger" aria-expanded="false" aria-haspopup="true">
+                            <span class="curve-picker-trigger-label">Show on Chart</span>
+                            <span class="curve-picker-sep" aria-hidden="true">·</span>
+                            <span class="curve-picker-count" id="curvePickerCount">0 selected</span>
+                            <span class="curve-picker-caret" aria-hidden="true">▾</span>
+                        </button>
+                        <div class="curve-picker-menu" id="curvePickerMenu" hidden role="dialog" aria-label="Chart curves">
+                            <div class="curve-picker-menu-head">
+                                <button type="button" class="curve-picker-clear" id="curvePickerClear">Clear</button>
+                            </div>
+                            <div class="curve-picker-body" id="curvePickerBody"></div>
+                        </div>
+                    </div>
+
+                    <div class="view-toggle compact">
+                        <button class="view-toggle-btn compact" data-view="cumulative">%</button>
+                        <button class="view-toggle-btn compact active" data-view="absolute">$</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content: Chart (Full Width) -->
+            <div class="leaderboard-main compact full-width">
+                <!-- Chart -->
+                <section class="chart-section full-width">
+                    <div class="chart-container medium">
+                        <canvas id="equityCurvesChart"></canvas>
+                    </div>
+                    <div id="equityCurvesLegend" class="chart-legend-custom"></div>
+                    <div class="chart-hint">Click a legend item to show/hide a curve • Hover a curve to emphasize • Click a row to select a team</div>
+                </section>
+            </div>
+
+            <!-- Compact Rankings Table + Sidebars -->
+            <div class="leaderboard-bottom compact">
+                <!-- Left: Table -->
+                <section class="leaderboard-table-section compact">
+                    <div class="table-header compact">
+                        <h3 id="leaderboardStandingsTitle">Ranking</h3>
+                    </div>
+                    <div class="table-wrapper compact">
+                        <table class="leaderboard-table compact">
+                            <thead>
+                                <tr>
+                                    <th class="rank-col sortable" data-sort="rank" aria-sort="ascending">Rank <span class="sort-arrow" aria-hidden="true"></span></th>
+                                    <th class="name-col">Entry</th>
+                                    <th class="portfolio-col sortable" data-sort="value">Value <span class="sort-arrow" aria-hidden="true"></span></th>
+                                    <th class="return-col sortable" data-sort="return">Return <span class="sort-arrow" aria-hidden="true"></span></th>
+                                    <th class="sharpe-col sortable" data-sort="sharpe">Sharpe <span class="sort-arrow" aria-hidden="true"></span></th>
+                                    <th class="dd-col sortable" data-sort="dd">Max DD <span class="sort-arrow" aria-hidden="true"></span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardTableBody">
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Right: Rules + Entry Detail -->
+                <aside class="leaderboard-table-sidebar compact">
+                    <!-- Ranking Rules -->
+                    <div class="sidebar-card compact">
+                        <h3 class="sidebar-title compact">Rules</h3>
+                        <div class="ranking-formula compact">
+                            <p class="formula-compact">Official rank = final portfolio value</p>
+                            <ul class="formula-items compact">
+                                <li>Higher account value ranks first</li>
+                                <li>Ties break on cumulative return</li>
+                                <li>Click column headers to re-sort</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Entry Detail -->
+                    <div class="sidebar-card compact">
+                        <h3 class="sidebar-title compact">Entry Details</h3>
+                        <div id="selectedTeamDetail" class="team-detail compact">
+                            <div class="no-selection">Click a row</div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Community -- Agent Supermarket is its first section, not the whole page:
+         the nav button says "Community", so the page has to say it too. -->
+    <div id="communityView" class="page-view community-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Community</h2>
+                <p class="page-description">Agent templates shared by the Agentic Trading Lab community.</p>
+            </div>
+        </div>
+        <div class="marketplace-section">
+            <div class="marketplace-section-head">
+                <div>
+                    <h3 class="marketplace-section-title">Agent Supermarket</h3>
+                    <p class="marketplace-section-sub">Browse open agent templates and add them to My Agents to customize and backtest.</p>
+                </div>
+                <div class="agent-toolbar-search marketplace-search">
+                    <svg class="agent-toolbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input id="marketplaceSearchInput" type="search" placeholder="Search templates..." aria-label="Search marketplace templates">
+                </div>
+            </div>
+            <p class="control-helper">Every test here uses simulated money. Real money is involved only if you explicitly connect a brokerage account and turn on live trading.</p>
+            <div id="marketplaceCategoryChips" class="marketplace-category-chips" role="group" aria-label="Filter templates by market"></div>
+            <div id="marketplaceVendorChips" class="marketplace-category-chips marketplace-vendor-chips" role="group" aria-label="Filter templates by AI model"></div>
+            <div id="marketplaceGrid" class="agents-grid marketplace-grid"></div>
+            <p id="marketplaceEmptyState" class="control-helper" hidden></p>
+            <p id="marketplaceErrorState" class="control-helper" hidden style="color:#f87171;">Couldn't load the marketplace. Check your connection and try again.</p>
+        </div>
+    </div>
+
+    <div id="accountView" class="page-view account-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Account</h2>
+                <p class="page-description">Your profile and sign-in details.</p>
+            </div>
+        </div>
+        <div id="accountSignedIn" class="account-card" hidden>
+            <div class="account-workspace">
+                <aside class="account-identity" aria-labelledby="accountIdentityHeading">
+                    <div class="account-identity-avatar-wrap">
+                        <span id="accountAvatarPreview" class="auth-avatar auth-avatar--large" aria-hidden="true"></span>
+                        <span id="accountProfileStatus" class="account-profile-status" role="status">Signed in</span>
+                    </div>
+                    <p class="account-section-kicker">Account identity</p>
+                    <h3 id="accountIdentityHeading" class="account-identity-name">—</h3>
+                    <p id="accountIdentityEmail" class="account-identity-email">—</p>
+                    <dl class="account-identity-facts">
+                        <div>
+                            <dt>Display name</dt>
+                            <dd id="accountDisplayName">—</dd>
+                        </div>
+                        <div>
+                            <dt>Email</dt>
+                            <dd id="accountEmail">—</dd>
+                        </div>
+                        <div>
+                            <dt>Role</dt>
+                            <dd id="accountRole">Member</dd>
+                        </div>
+                    </dl>
+                    <div class="account-identity-actions">
+                        <button id="authLogoutBtn" class="auth-btn auth-btn-danger" type="button">Log out</button>
+                    </div>
+                </aside>
+
+                <div class="account-settings-grid">
+                    <section class="account-section" aria-labelledby="accountDisplayNameHeading">
+                        <h3 id="accountDisplayNameHeading" class="account-section-title">Display name</h3>
+                        <form id="accountDisplayNameForm" class="auth-form account-password-form">
+                            <label class="auth-field">
+                                <span>Display name</span>
+                                <input id="displayNameInput" type="text" maxlength="100" autocomplete="nickname" required>
+                            </label>
+                            <p id="displayNameError" class="auth-error" hidden></p>
+                            <p id="displayNameSuccess" class="account-success" hidden>Display name updated.</p>
+                            <button class="auth-btn auth-btn-primary" type="submit">Save name</button>
+                        </form>
+                    </section>
+                    <section class="account-section" aria-labelledby="accountPhotoHeading">
+                        <h3 id="accountPhotoHeading" class="account-section-title">Profile photo</h3>
+                        <div class="account-avatar-row">
+                            <div class="account-avatar-actions">
+                                <input id="avatarFileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                                <button id="avatarUploadBtn" class="auth-btn auth-btn-secondary" type="button">Upload photo</button>
+                                <button id="avatarRemoveBtn" class="auth-btn auth-btn-secondary" type="button" hidden>Remove</button>
+                            </div>
+                        </div>
+                        <p id="avatarError" class="auth-error" hidden></p>
+                    </section>
+                    <section class="account-section" aria-labelledby="accountEmailHeading">
+                        <h3 id="accountEmailHeading" class="account-section-title">Change email address</h3>
+                        <form id="accountEmailForm" class="auth-form account-password-form">
+                            <div id="emailChangeIdle">
+                                <label class="auth-field">
+                                    <span>New email address</span>
+                                    <input id="newEmailInput" type="email" maxlength="254" autocomplete="email">
+                                </label>
+                                <label class="auth-field">
+                                    <span>Current password</span>
+                                    <input id="emailChangePasswordInput" type="password" autocomplete="current-password">
+                                </label>
+                                <p class="account-hint">You can change your email address once every 7 days.</p>
+                            </div>
+                            <div id="emailChangeCodeStep" hidden>
+                                <p id="emailChangeStepCopy" class="account-hint"></p>
+                                <label class="auth-field">
+                                    <span>Confirmation code</span>
+                                    <input id="emailChangeCodeInput" type="text" maxlength="6" autocomplete="one-time-code">
+                                </label>
+                            </div>
+                            <p id="emailChangeError" class="auth-error" hidden></p>
+                            <p id="emailChangeSuccess" class="account-success" hidden>Email address updated. Other devices were signed out.</p>
+                            <div class="account-email-actions">
+                                <button id="emailChangeSubmitBtn" class="auth-btn auth-btn-primary" type="submit">Send code</button>
+                                <button id="emailChangeCancelBtn" class="auth-btn auth-btn-secondary" type="button" hidden>Cancel</button>
+                            </div>
+                        </form>
+                    </section>
+                    <section class="account-section" aria-labelledby="accountPasswordHeading">
+                        <h3 id="accountPasswordHeading" class="account-section-title">Change password</h3>
+                        <form id="changePasswordForm" class="auth-form account-password-form">
+                            <label class="auth-field">
+                                <span>Current password</span>
+                                <input id="currentPasswordInput" type="password" autocomplete="current-password" required>
+                            </label>
+                            <label class="auth-field">
+                                <span>New password</span>
+                                <input id="newPasswordInput" type="password" autocomplete="new-password" required>
+                            </label>
+                            <label class="auth-field">
+                                <span>Confirm new password</span>
+                                <input id="confirmPasswordInput" type="password" autocomplete="new-password" required>
+                            </label>
+                            <ul id="passwordPolicyHints" class="password-policy-hints" hidden></ul>
+                            <p id="changePasswordError" class="auth-error" hidden></p>
+                            <p id="changePasswordSuccess" class="account-success" hidden>Password updated. Other devices were signed out.</p>
+                            <button class="auth-btn auth-btn-primary" type="submit">Update password</button>
+                        </form>
+                    </section>
+                </div>
+            </div>
+        </div>
+        <div id="accountSignedOut" class="account-card account-card--empty" hidden>
+            <p class="account-empty-copy">Sign in to view your account.</p>
+            <button id="accountSignInBtn" class="auth-btn auth-btn-primary" type="button">Sign in</button>
+        </div>
+    </div>
+
+    <div id="creditsView" class="page-view credits-view" style="display: none;">
+        <div class="credits-shell">
+            <div class="page-header credits-page-header">
+                <div>
+                    <div class="credits-title-row">
+                        <h2 class="page-title">Credits &amp; Billing</h2>
+                        <span id="creditsTestModeBadge" class="credits-test-badge">Test Mode</span>
+                    </div>
+                    <p class="page-description">Buy ATL Credits with Stripe test cards. No real charge is made.</p>
+                </div>
+                <button id="creditsRefreshBtn" class="credits-icon-btn" type="button" aria-label="Refresh Credits" title="Refresh Credits">
+                    <svg aria-hidden="true"><use href="#icon-refresh"/></svg>
+                </button>
+            </div>
+
+            <nav id="creditsTabs" class="credits-tabs" aria-label="Credits and Billing sections" role="tablist">
+                <button id="creditsTabApiKeys" class="credits-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="creditsApiKeysPanel" data-credits-tab="api-keys">API Keys</button>
+                <button id="creditsTabOverview" class="credits-tab" type="button" role="tab" aria-selected="false" aria-controls="creditsPanelOverview" data-credits-tab="overview">Credits</button>
+                <button id="creditsTabActivity" class="credits-tab" type="button" role="tab" aria-selected="false" aria-controls="creditsPanelActivity" data-credits-tab="activity">Activity</button>
+            </nav>
+
+            <section id="creditsSignedOut" class="credits-empty-state" hidden>
+                <h3>Sign in to manage Credits</h3>
+                <p>Your balance and purchase history belong to your ATL account.</p>
+                <button id="creditsSignInBtn" class="auth-btn auth-btn-primary" type="button">Sign in</button>
+            </section>
+
+            <div id="creditsSignedIn" hidden>
+                <section id="creditsPanelOverview" class="credits-panel" role="tabpanel" aria-labelledby="creditsTabOverview" data-credits-panel="overview" hidden>
+                    <section class="credits-balance-band" aria-labelledby="creditsBalanceHeading">
+                        <div>
+                            <p id="creditsBalanceHeading" class="credits-section-kicker">Credit balance</p>
+                            <p id="creditsBalance" class="credits-balance" aria-live="polite">—</p>
+                            <p id="creditsAccountStatus" class="credits-account-status">Loading account…</p>
+                        </div>
+                        <div class="credits-balance-note">
+                            <svg aria-hidden="true"><use href="#icon-shield-check"/></svg>
+                            <span>Credits are added only after a signed Stripe webhook is verified.</span>
+                        </div>
+                    </section>
+
+                <section class="credits-section" aria-labelledby="creditsPurchaseHeading">
+                    <div class="credits-section-head">
+                        <div>
+                            <p class="credits-section-kicker">Top up</p>
+                            <h3 id="creditsPurchaseHeading">Choose an amount</h3>
+                        </div>
+                        <span class="credits-rate">$1 = 1.000000 Credits</span>
+                    </div>
+                    <div id="creditsPackageGrid" class="credits-package-grid" role="radiogroup" aria-label="Credit package">
+                        <button class="credits-package-btn" type="button" role="radio" aria-checked="false" data-credit-package="usd_0_50" data-credit-cents="50"><strong>$0.50</strong><span>0.500000 Credits</span></button>
+                        <button class="credits-package-btn is-selected" type="button" role="radio" aria-checked="true" data-credit-package="usd_1" data-credit-cents="100"><strong>$1</strong><span>1.000000 Credits</span></button>
+                        <button class="credits-package-btn" type="button" role="radio" aria-checked="false" data-credit-package="usd_2" data-credit-cents="200"><strong>$2</strong><span>2.000000 Credits</span></button>
+                        <button class="credits-package-btn" type="button" role="radio" aria-checked="false" data-credit-package="usd_5" data-credit-cents="500"><strong>$5</strong><span>5.000000 Credits</span></button>
+                    </div>
+                    <div class="credits-custom-row">
+                        <label for="creditsCustomAmount">Custom amount</label>
+                        <div class="credits-money-input">
+                            <span aria-hidden="true">$</span>
+                            <input id="creditsCustomAmount" type="number" min="0.50" max="5.00" step="0.01" inputmode="decimal" autocomplete="off" placeholder="0.50-5.00" aria-describedby="creditsCustomHint">
+                        </div>
+                        <p id="creditsCustomHint">Minimum $0.50, maximum $5.00.</p>
+                    </div>
+                    <button id="creditsPurchaseBtn" class="auth-btn auth-btn-primary credits-purchase-btn" type="button">
+                        <svg aria-hidden="true"><use href="#icon-wallet"/></svg>
+                        <span>Continue to Stripe</span>
+                    </button>
+                    <p id="creditsPurchaseStatus" class="credits-status" role="status" aria-live="polite"></p>
+                </section>
+                </section>
+
+                <section id="creditsApiKeysPanel" class="credits-panel" role="tabpanel" aria-labelledby="creditsTabApiKeys" data-credits-panel="api-keys">
+                    <section class="credits-section credits-api-keys-section" aria-labelledby="creditsApiKeysHeading">
+                        <div class="credits-section-head">
+                            <div>
+                                <p class="credits-section-kicker">API Keys</p>
+                                <h3 id="creditsApiKeysHeading" tabindex="-1">Connect your model providers</h3>
+                            </div>
+                            <span class="credits-rate">Encrypted vault</span>
+                        </div>
+                        <p class="credits-api-keys-intro">Keys are checked through each provider's authenticated verification endpoint. They stay with your account and are never shown again.</p>
+                        <div class="credits-api-keys-layout">
+                            <form id="creditsApiKeyForm" class="credits-api-key-form">
+                                <label class="credits-key-field" for="creditsApiKeyProvider">
+                                    <span>Provider</span>
+                                    <select id="creditsApiKeyProvider" class="control-select" autocomplete="off" required>
+                                        <option value="">Loading providers…</option>
+                                    </select>
+                                </label>
+                                <div id="creditsApiKeyGuide" class="credits-key-guide" hidden>
+                                    <ol id="creditsApiKeyGuideSteps" class="credits-key-guide-steps" aria-label="API key setup steps">
+                                        <li class="credits-key-guide-step">
+                                            <div class="credits-key-guide-head">
+                                                <span class="credits-key-guide-number" aria-hidden="true">1</span>
+                                                <div>
+                                                    <h4>Open official API key page</h4>
+                                                    <p id="creditsApiKeyGuideProvider" aria-live="polite">Open the selected provider's official key page.</p>
+                                                </div>
+                                            </div>
+                                            <a
+                                                id="creditsApiKeyOfficialLink"
+                                                class="auth-btn auth-btn-secondary credits-key-guide-link"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <span>Open official API key page</span>
+                                                <svg aria-hidden="true"><use href="#icon-external-link"/></svg>
+                                            </a>
+                                            <svg class="credits-key-guide-arrow" aria-hidden="true"><use href="#icon-arrow-right"/></svg>
+                                        </li>
+                                        <li class="credits-key-guide-step">
+                                            <div class="credits-key-guide-head">
+                                                <span class="credits-key-guide-number" aria-hidden="true">2</span>
+                                                <div>
+                                                    <h4>Create and copy the key</h4>
+                                                    <p>Sign in there, create a key, then copy it once.</p>
+                                                </div>
+                                            </div>
+                                            <div class="credits-key-guide-illustration" aria-hidden="true">
+                                                <span class="credits-key-guide-window-bar"></span>
+                                                <span class="credits-key-guide-create">Create API key</span>
+                                                <span class="credits-key-guide-masked">sk-...7K2</span>
+                                                <span class="credits-key-guide-copy">Copy</span>
+                                            </div>
+                                            <svg class="credits-key-guide-arrow" aria-hidden="true"><use href="#icon-arrow-right"/></svg>
+                                        </li>
+                                        <li class="credits-key-guide-step">
+                                            <div class="credits-key-guide-head">
+                                                <span class="credits-key-guide-number" aria-hidden="true">3</span>
+                                                <div>
+                                                    <h4>Return here and paste it below</h4>
+                                                    <p>Use the real ATL fields below, then save and verify.</p>
+                                                </div>
+                                            </div>
+                                            <div class="credits-key-guide-paste" aria-hidden="true">
+                                                <span>API key</span>
+                                                <span class="credits-key-guide-input">Paste key here</span>
+                                                <span class="credits-key-guide-verify">Save and verify</span>
+                                            </div>
+                                        </li>
+                                    </ol>
+                                    <p id="creditsApiKeyGuideFallback" class="credits-key-guide-fallback" hidden>
+                                        ATL does not have an official setup link for this provider. Contact the administrator who enabled it.
+                                    </p>
+                                </div>
+                                <label class="credits-key-field" for="creditsApiKeyLabel">
+                                    <span>Name</span>
+                                    <input id="creditsApiKeyLabel" type="text" maxlength="80" autocomplete="off" placeholder="Research" required>
+                                </label>
+                                <label class="credits-key-field" for="creditsApiKeySecret">
+                                    <span>API key</span>
+                                    <input id="creditsApiKeySecret" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false" aria-describedby="creditsApiKeyTroubleshooting" required>
+                                </label>
+                                <p id="creditsApiKeyTroubleshooting" class="credits-key-troubleshooting" hidden>
+                                    Check that the full key was copied and is active. Some providers also require billing or account credits before API calls can run.
+                                </p>
+                                <label class="credits-key-default">
+                                    <input id="creditsApiKeyDefault" type="checkbox">
+                                    <span>Make this the verified default</span>
+                                </label>
+                                <button id="creditsApiKeySave" class="auth-btn auth-btn-primary credits-key-save" type="submit">
+                                    <svg aria-hidden="true"><use href="#icon-check-circle"/></svg>
+                                    <span>Save and verify</span>
+                                </button>
+                                <p id="creditsApiKeyStatus" class="credits-status" role="status" aria-live="polite"></p>
+                            </form>
+                            <div class="credits-key-list-wrap">
+                                <div class="credits-key-list-head">
+                                    <span class="credits-section-kicker">Saved keys</span>
+                                    <span id="creditsApiKeyCount" class="credits-muted"></span>
+                                </div>
+                                <div id="creditsApiKeyList" class="credits-key-list" aria-live="polite">
+                                    <p class="credits-muted">Loading keys…</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="credits-api-keys-footnote">Available for metered ATL model runs. BYOK runs use your provider account and do not deduct ATL Credits.</p>
+                    </section>
+                </section>
+
+                <section id="creditsPanelActivity" class="credits-panel" role="tabpanel" aria-labelledby="creditsTabActivity" data-credits-panel="activity" hidden>
+                <section class="credits-section" aria-labelledby="creditsActivityHeading">
+                    <div class="credits-section-head">
+                        <div>
+                            <p class="credits-section-kicker">Ledger</p>
+                            <h3 id="creditsActivityHeading">Recent activity</h3>
+                        </div>
+                    </div>
+                    <div id="creditsLedgerList" class="credits-ledger-list" aria-live="polite">
+                        <p class="credits-muted">Loading activity…</p>
+                    </div>
+                </section>
+
+                <section id="creditsAdminSection" class="credits-section credits-admin-section" aria-labelledby="creditsAdminHeading" hidden>
+                    <div class="credits-section-head">
+                        <div>
+                            <p class="credits-section-kicker">Administration</p>
+                            <h3 id="creditsAdminHeading">Payment orders</h3>
+                        </div>
+                        <span class="credits-admin-badge">Admin</span>
+                    </div>
+                    <div class="credits-table-wrap">
+                        <table class="credits-admin-table">
+                            <thead><tr><th>Order</th><th>User</th><th>Paid</th><th>Status</th><th>Refundable</th><th aria-label="Action"></th></tr></thead>
+                            <tbody id="creditsAdminOrders"></tbody>
+                        </table>
+                    </div>
+                    <p id="creditsAdminStatus" class="credits-status" role="status" aria-live="polite"></p>
+                </section>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminView" class="page-view admin-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h2 class="page-title">Admin</h2>
+                <p class="page-description">Read platform analytics and manage Grant Credits, accounts, approved providers, and the audit trail.</p>
+            </div>
+            <button id="adminRefreshBtn" class="auth-btn auth-btn-secondary" type="button">Refresh</button>
+        </div>
+        <p id="adminError" class="auth-error" hidden></p>
+        <p id="adminSuccess" class="account-success" hidden></p>
+
+        <nav id="adminTabs" class="admin-tabs" aria-label="Admin sections" role="tablist">
+            <button id="adminTabAnalytics" class="admin-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="adminPanelAnalytics" tabindex="0" data-admin-tab="analytics">Analytics</button>
+            <button id="adminTabUsers" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="adminPanelUsers" tabindex="-1" data-admin-tab="users">Users</button>
+            <button id="adminTabProviders" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="adminPanelProviders" tabindex="-1" data-admin-tab="providers">Providers</button>
+            <button id="adminTabActivity" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="adminPanelActivity" tabindex="-1" data-admin-tab="activity">Activity</button>
+        </nav>
+        <p id="adminCreditsStatus" class="credits-status admin-credits-status" role="status" aria-live="polite"></p>
+
+        <section id="adminPanelAnalytics" class="admin-tab-panel" role="tabpanel" aria-labelledby="adminTabAnalytics" data-admin-panel="analytics">
+            <div id="adminAnalyticsOverview" class="admin-analytics-overview">
+                <header class="admin-analytics-heading">
+                    <div>
+                        <p class="credits-section-kicker">Platform intelligence</p>
+                        <h3>Analytics overview</h3>
+                        <p>Activation, usage, model execution, cost, and product friction.</p>
+                    </div>
+                    <div class="admin-analytics-update">
+                        <button id="adminAnalyticsRefreshBtn" class="auth-btn auth-btn-secondary" type="button">Refresh analytics</button>
+                        <p>Last updated <time id="adminAnalyticsLastUpdated">—</time></p>
+                    </div>
+                </header>
+
+                <form id="adminAnalyticsFilters" class="admin-analytics-filters" aria-label="Analytics filters">
+                    <label for="adminAnalyticsStart"><span>Start date</span><input id="adminAnalyticsStart" type="date" required></label>
+                    <label for="adminAnalyticsEnd"><span>End date</span><input id="adminAnalyticsEnd" type="date" required></label>
+                    <label for="adminAnalyticsBilling"><span>Billing mode</span><select id="adminAnalyticsBilling" class="filter-select"><option value="all">All billing modes</option><option value="byok">BYOK</option><option value="platform_credits">Platform Credits</option></select></label>
+                    <label for="adminAnalyticsProvider"><span>Provider ID</span><input id="adminAnalyticsProvider" type="text" maxlength="64" pattern="[a-z0-9_]{2,64}" placeholder="All providers" autocomplete="off"></label>
+                    <label for="adminAnalyticsModel"><span>Model ID</span><input id="adminAnalyticsModel" type="text" maxlength="256" placeholder="All models" autocomplete="off"></label>
+                    <label class="admin-analytics-check" for="adminAnalyticsInternal"><input id="adminAnalyticsInternal" type="checkbox"><span>Include internal accounts</span></label>
+                    <button class="auth-btn auth-btn-primary" type="submit">Apply filters</button>
+                    <p id="adminAnalyticsFilterError" class="auth-error" role="alert" hidden></p>
+                </form>
+
+                <section id="adminAnalyticsSnapshot" class="admin-analytics-section" data-analytics-panel="snapshot" aria-labelledby="adminAnalyticsSnapshotHeading" aria-busy="false">
+                    <div class="admin-analytics-section-head"><div><p class="credits-section-kicker">Executive pulse</p><h4 id="adminAnalyticsSnapshotHeading">Overview</h4></div></div>
+                    <p data-panel-status role="status" aria-live="polite"></p>
+                    <p data-panel-error role="alert" hidden></p>
+                    <div class="admin-analytics-snapshot-grid">
+                        <article><span>Active users</span><strong data-analytics-metric="active-users">—</strong><small>Rolling 7 days</small></article>
+                        <article><span>First success conversion</span><strong data-analytics-metric="first-success">—</strong><small>Signup to first completed run</small></article>
+                        <article><span>Backtest success rate</span><strong data-analytics-metric="success-rate">—</strong><small>Completed vs failed runs</small></article>
+                        <article><span>ATL platform model cost</span><strong data-analytics-metric="platform-cost">—</strong><small>Platform Credits lane only</small></article>
+                    </div>
+                    <dl class="admin-analytics-operational-strip">
+                        <div><dt>Completed runs</dt><dd data-analytics-metric="completed-runs">—</dd></div>
+                        <div><dt>Failed runs</dt><dd data-analytics-metric="failed-runs">—</dd></div>
+                        <div><dt>Repeat-run rate</dt><dd data-analytics-metric="repeat-rate">—</dd></div>
+                        <div><dt>Input tokens</dt><dd data-analytics-metric="input-tokens">—</dd></div>
+                        <div><dt>Output tokens</dt><dd data-analytics-metric="output-tokens">—</dd></div>
+                    </dl>
+                </section>
+
+                <section id="adminAnalyticsEngagement" class="admin-analytics-section" data-analytics-panel="engagement" aria-labelledby="adminAnalyticsEngagementHeading" aria-busy="false">
+                    <div class="admin-analytics-section-head"><div><p class="credits-section-kicker">Growth and activation</p><h4 id="adminAnalyticsEngagementHeading">Engagement</h4></div></div>
+                    <div class="admin-analytics-engagement-grid">
+                        <article class="admin-analytics-trend">
+                            <h5>Daily activity</h5>
+                            <p data-growth-error role="alert" hidden></p>
+                            <div class="admin-analytics-chart-wrap"><canvas id="adminAnalyticsTrendChart" role="img" aria-label="Daily active users and completed runs"></canvas></div>
+                            <p id="adminAnalyticsChartFallback" class="credits-muted" hidden></p>
+                            <table id="adminAnalyticsTrendTable" class="sr-only"><caption>Daily active users and completed runs</caption><thead><tr><th scope="col">Date</th><th scope="col">Active users</th><th scope="col">Completed runs</th></tr></thead><tbody></tbody></table>
+                        </article>
+                        <article class="admin-analytics-funnel">
+                            <h5>Activation funnel</h5>
+                            <p data-funnel-error role="alert" hidden></p>
+                            <ol id="adminAnalyticsFunnelList"></ol>
+                        </article>
+                    </div>
+                </section>
+
+                <section id="adminAnalyticsHealth" class="admin-analytics-section" data-analytics-panel="health" aria-labelledby="adminAnalyticsHealthHeading" aria-busy="false">
+                    <div class="admin-analytics-section-head"><div><p class="credits-section-kicker">Operational health</p><h4 id="adminAnalyticsHealthHeading">Health and friction</h4></div></div>
+                    <p data-panel-error role="alert" hidden></p>
+                    <div class="admin-analytics-health-grid">
+                        <article><h5>User states</h5><ul id="adminAnalyticsStateList" class="admin-analytics-state-list"></ul></article>
+                        <article><h5>Top failure categories</h5><div class="admin-analytics-table-wrap"><table class="admin-analytics-friction-table"><thead><tr><th scope="col">Category</th><th scope="col">Affected users</th></tr></thead><tbody id="adminAnalyticsFrictionBody"></tbody></table></div></article>
+                    </div>
+                </section>
+
+                <section id="adminAnalyticsAttention" class="admin-analytics-section" data-analytics-panel="attention" aria-labelledby="adminAnalyticsAttentionHeading" aria-busy="false">
+                    <div class="admin-analytics-section-head"><div><p class="credits-section-kicker">Operator queue</p><h4 id="adminAnalyticsAttentionHeading" tabindex="-1">Users needing attention</h4></div><span id="adminAnalyticsUserRange" aria-live="polite"></span></div>
+                    <form id="adminAnalyticsUserFilters" class="admin-analytics-attention-filters" role="search">
+                        <label for="adminAnalyticsUserQuery"><span>Search</span><input id="adminAnalyticsUserQuery" type="search" maxlength="100" autocomplete="off" placeholder="Search name or email"></label>
+                        <label for="adminAnalyticsUserStatus"><span>State</span><select id="adminAnalyticsUserStatus" class="filter-select"><option value="all">All states</option><option value="blocked">Blocked</option><option value="needs_attention">Needs Attention</option><option value="dormant">Dormant</option><option value="onboarding">Onboarding</option><option value="active">Active</option></select></label>
+                        <label for="adminAnalyticsUserSort"><span>Sort</span><select id="adminAnalyticsUserSort" class="filter-select"><option value="recent_failures">Most failures</option><option value="last_activity">Latest activity</option><option value="recent_runs">Most runs</option><option value="joined_at">Newest accounts</option></select></label>
+                        <button class="auth-btn auth-btn-secondary" type="submit">Update queue</button>
+                    </form>
+                    <p data-panel-error role="alert" hidden></p>
+                    <div class="admin-analytics-table-wrap">
+                        <table class="admin-analytics-attention-table" aria-label="Users needing attention">
+                            <thead><tr><th scope="col">Account</th><th scope="col">State and reason</th><th scope="col">Last meaningful activity</th><th scope="col">Recent runs</th><th scope="col">Failures</th><th scope="col"><span class="sr-only">Profile</span></th></tr></thead>
+                            <tbody id="adminAnalyticsAttentionBody"><tr><td colspan="6" class="admin-empty">Loading users…</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="admin-analytics-pager" aria-label="Users needing attention pages"><button id="adminAnalyticsUsersPrev" class="auth-btn auth-btn-secondary" type="button" disabled>Previous</button><button id="adminAnalyticsUsersNext" class="auth-btn auth-btn-secondary" type="button" disabled>Next</button></div>
+                </section>
+            </div>
+
+            <article id="adminAnalyticsProfile" class="admin-analytics-profile" aria-labelledby="adminAnalyticsProfileTitle" hidden>
+                <button id="adminAnalyticsProfileBack" class="credits-key-action" type="button">Back to analytics overview</button>
+                <p id="adminAnalyticsProfileError" class="auth-error" role="alert" hidden></p>
+                <div class="admin-analytics-profile-layout">
+                    <aside class="admin-analytics-profile-summary" aria-labelledby="adminAnalyticsProfileTitle">
+                        <p class="credits-section-kicker">User analytics profile</p>
+                        <h3 id="adminAnalyticsProfileTitle" tabindex="-1">Loading user analytics</h3>
+                        <p id="adminAnalyticsProfileEmail">—</p>
+                        <dl class="admin-analytics-profile-facts">
+                            <div><dt>User ID</dt><dd id="adminAnalyticsProfileUserId">—</dd></div>
+                            <div><dt>Joined</dt><dd id="adminAnalyticsProfileJoined">—</dd></div>
+                            <div><dt>Last meaningful activity</dt><dd id="adminAnalyticsProfileLastActivity">—</dd></div>
+                            <div><dt>State</dt><dd id="adminAnalyticsProfileState">—</dd></div>
+                            <div><dt>Reason</dt><dd id="adminAnalyticsProfileReason">—</dd></div>
+                            <div><dt>Primary billing lane</dt><dd id="adminAnalyticsProfileBilling">—</dd></div>
+                            <div><dt>Default provider</dt><dd id="adminAnalyticsProfileProvider">—</dd></div>
+                            <div><dt>Region</dt><dd id="adminAnalyticsProfileRegion">Unknown</dd></div>
+                            <div><dt>Device</dt><dd id="adminAnalyticsProfileDevice">Unknown</dd></div>
+                            <div><dt>Browser</dt><dd id="adminAnalyticsProfileBrowser">Unknown</dd></div>
+                        </dl>
+                        <details id="adminAnalyticsProfileEvidence"><summary>Evidence event IDs</summary><ul></ul></details>
+                        <a id="adminAnalyticsOpenAccount" href="/app?view=admin&amp;adminTab=users">Open account management</a>
+                    </aside>
+                    <div class="admin-analytics-profile-content">
+                        <nav id="adminAnalyticsProfileTabs" class="admin-analytics-profile-tabs" role="tablist" aria-label="User analytics sections">
+                            <button id="adminAnalyticsProfileTabOverview" role="tab" aria-selected="true" aria-controls="adminAnalyticsSectionOverview" tabindex="0" data-analytics-section-tab="overview" type="button">Overview</button>
+                            <button id="adminAnalyticsProfileTabTimeline" role="tab" aria-selected="false" aria-controls="adminAnalyticsSectionTimeline" tabindex="-1" data-analytics-section-tab="timeline" type="button">Timeline</button>
+                            <button id="adminAnalyticsProfileTabRuns" role="tab" aria-selected="false" aria-controls="adminAnalyticsSectionRuns" tabindex="-1" data-analytics-section-tab="runs" type="button">Runs</button>
+                            <button id="adminAnalyticsProfileTabUsage" role="tab" aria-selected="false" aria-controls="adminAnalyticsSectionUsage" tabindex="-1" data-analytics-section-tab="usage" type="button">Usage</button>
+                            <button id="adminAnalyticsProfileTabSessions" role="tab" aria-selected="false" aria-controls="adminAnalyticsSectionSessions" tabindex="-1" data-analytics-section-tab="sessions" type="button">Sessions</button>
+                        </nav>
+                        <section id="adminAnalyticsSectionOverview" class="admin-analytics-profile-panel" data-analytics-section-panel="overview" role="tabpanel" aria-labelledby="adminAnalyticsProfileTabOverview">
+                            <p data-section-status role="status" aria-live="polite">Loading profile overview…</p><p data-section-error role="alert" hidden></p>
+                            <div id="adminAnalyticsProfileOverviewContent" class="admin-analytics-profile-overview">
+                                <section><h4>Activation milestones</h4><ol id="adminAnalyticsMilestones"></ol></section>
+                                <section><h4>Run summary</h4><dl id="adminAnalyticsRunSummary" class="admin-analytics-summary-grid"></dl></section>
+                                <section><h4>Billing and usage</h4><div class="admin-analytics-profile-usage"><dl id="adminAnalyticsUsageSummary"></dl><ul id="adminAnalyticsBillingMix"></ul></div></section>
+                                <section><h4>Recent footprint</h4><ol id="adminAnalyticsRecentFootprint" class="admin-analytics-timeline"></ol></section>
+                            </div>
+                        </section>
+                        <section id="adminAnalyticsSectionTimeline" class="admin-analytics-profile-panel" data-analytics-section-panel="timeline" role="tabpanel" aria-labelledby="adminAnalyticsProfileTabTimeline" hidden><p data-section-status role="status" aria-live="polite"></p><p data-section-error role="alert" hidden></p><div data-section-items></div><button class="auth-btn auth-btn-secondary" data-section-more type="button" hidden>Load more timeline</button></section>
+                        <section id="adminAnalyticsSectionRuns" class="admin-analytics-profile-panel" data-analytics-section-panel="runs" role="tabpanel" aria-labelledby="adminAnalyticsProfileTabRuns" hidden><p data-section-status role="status" aria-live="polite"></p><p data-section-error role="alert" hidden></p><div data-section-items></div><button class="auth-btn auth-btn-secondary" data-section-more type="button" hidden>Load more runs</button></section>
+                        <section id="adminAnalyticsSectionUsage" class="admin-analytics-profile-panel" data-analytics-section-panel="usage" role="tabpanel" aria-labelledby="adminAnalyticsProfileTabUsage" hidden><p data-section-status role="status" aria-live="polite"></p><p data-section-error role="alert" hidden></p><div data-section-items></div><button class="auth-btn auth-btn-secondary" data-section-more type="button" hidden>Load more usage</button></section>
+                        <section id="adminAnalyticsSectionSessions" class="admin-analytics-profile-panel" data-analytics-section-panel="sessions" role="tabpanel" aria-labelledby="adminAnalyticsProfileTabSessions" hidden><p data-section-status role="status" aria-live="polite"></p><p data-section-error role="alert" hidden></p><div data-section-items></div><button class="auth-btn auth-btn-secondary" data-section-more type="button" hidden>Load more sessions</button></section>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section id="adminPanelUsers" class="admin-tab-panel" role="tabpanel" aria-labelledby="adminTabUsers" data-admin-panel="users" hidden>
+        <div id="adminStats" class="admin-stats" aria-label="Site stats">
+            <div class="admin-stat"><span class="admin-stat-value" data-stat="users">—</span><span class="admin-stat-label">Users</span></div>
+            <div class="admin-stat"><span class="admin-stat-value" data-stat="admins">—</span><span class="admin-stat-label">Admins</span></div>
+            <div class="admin-stat"><span class="admin-stat-value" data-stat="agents">—</span><span class="admin-stat-label">Agents</span></div>
+            <div class="admin-stat"><span class="admin-stat-value" data-stat="active_dashboard_backtests">—</span><span class="admin-stat-label">Running backtests</span></div>
+        </div>
+            <section id="adminCreditsSection" class="admin-credits-console" aria-labelledby="adminCreditsHeading">
+            <div class="admin-credits-heading">
+                <div>
+                    <p class="credits-section-kicker">Credits administration</p>
+                    <h3 id="adminCreditsHeading">Grant Pool</h3>
+                    <p class="admin-credits-summary-copy">Fund the platform pool, allocate Grant Credits to an account, and keep every movement auditable.</p>
+                </div>
+                <div class="admin-credits-heading-actions">
+                    <span class="credits-admin-badge">Admin only</span>
+                    <button id="adminCreditsRefreshBtn" class="credits-icon-btn" type="button" aria-label="Refresh Grant Credits" title="Refresh Grant Credits">
+                        <svg aria-hidden="true"><use href="#icon-refresh"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="admin-credits-pool-layout">
+            <div id="adminCreditsPoolSummary" class="admin-credits-summary" aria-label="Grant Pool summary">
+                <div class="admin-credits-pool-ring" role="img" aria-label="Grant Pool allocation">
+                    <svg viewBox="0 0 220 220" aria-hidden="true">
+                        <circle class="admin-credits-pool-ring-track" cx="110" cy="110" r="78"></circle>
+                        <circle id="adminCreditsPoolRingAvailable" class="admin-credits-pool-ring-available" cx="110" cy="110" r="78"></circle>
+                        <circle id="adminCreditsPoolRingAllocated" class="admin-credits-pool-ring-allocated" cx="110" cy="110" r="78"></circle>
+                    </svg>
+                    <div class="admin-credits-pool-ring-center">
+                        <span>Total Pool</span>
+                        <strong id="adminCreditsPoolTotal">—</strong>
+                        <small>Credits</small>
+                    </div>
+                </div>
+                <div class="admin-credits-pool-legend" aria-label="Grant Pool allocation details">
+                    <div class="admin-credits-pool-legend-row">
+                        <span class="admin-credits-pool-swatch is-available" aria-hidden="true"></span>
+                        <span class="admin-credits-pool-legend-label">Available</span>
+                        <strong id="adminCreditsPoolAvailable">—</strong>
+                    </div>
+                    <div class="admin-credits-pool-legend-row">
+                        <span class="admin-credits-pool-swatch is-allocated" aria-hidden="true"></span>
+                        <span class="admin-credits-pool-legend-label">Allocated</span>
+                        <strong id="adminCreditsAllocated">—</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-credits-actions">
+                <form id="adminGrantPoolForm" class="admin-credits-form">
+                    <div class="admin-credits-form-heading">
+                        <div>
+                            <p class="credits-section-kicker">Pool adjustment</p>
+                            <h4>Adjust Grant Pool</h4>
+                        </div>
+                        <svg aria-hidden="true"><use href="#icon-wallet"/></svg>
+                    </div>
+                    <label class="credits-key-field" for="adminGrantPoolAmount"><span>Credits (+ add, − remove)</span><input id="adminGrantPoolAmount" type="number" step="0.000001" inputmode="decimal" autocomplete="off" placeholder="0.000000" required></label>
+                    <label class="credits-key-field" for="adminGrantPoolReason"><span>Reason</span><input id="adminGrantPoolReason" type="text" maxlength="500" placeholder="Budget approval reference" required></label>
+                    <button class="auth-btn auth-btn-primary" type="submit"><svg aria-hidden="true"><use href="#icon-check-circle"/></svg><span>Apply adjustment</span></button>
+                </form>
+            </div>
+            </div>
+            </section>
+            <div class="admin-credits-users">
+                <div class="admin-credits-subheading">
+                    <h4 id="adminCreditsUsersHeading">Account Management</h4>
+                    <span id="adminCreditsUserCount" class="admin-credits-count" aria-live="polite"></span>
+                </div>
+                <form id="adminCreditsUserSearch" class="admin-credits-search" role="search">
+                    <label class="sr-only" for="adminCreditsUserQuery">Search users</label>
+                    <input id="adminCreditsUserQuery" type="search" maxlength="120" placeholder="Search by email or display name" autocomplete="off">
+                    <button class="credits-icon-btn" type="submit" aria-label="Search users" title="Search users"><svg aria-hidden="true"><use href="#icon-search"/></svg></button>
+                </form>
+                <div class="admin-credits-table-wrap">
+                    <table class="admin-credits-users-table" aria-label="Grant Credits user allocation">
+                        <thead><tr><th scope="col">Account</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Grant</th><th scope="col">Purchased</th><th scope="col">Total</th><th scope="col">Amount</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                        <tbody id="adminCreditsUsersBody"><tr><td colspan="8" class="admin-empty">Search for an account to allocate Grant Credits.</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="admin-credits-pager" aria-label="Account pages">
+                    <span id="adminCreditsUsersRange" class="admin-credits-pager-range" aria-live="polite">Showing 0 of 0</span>
+                    <div class="admin-credits-pager-buttons">
+                        <button id="adminCreditsUsersPrevBtn" class="auth-btn auth-btn-secondary" type="button" disabled>Previous</button>
+                        <button id="adminCreditsUsersNextBtn" class="auth-btn auth-btn-secondary" type="button" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+        <div id="adminLegacyUsersPanel" class="admin-legacy-users" hidden>
+        <div class="admin-table-wrap">
+            <table class="admin-users-table" aria-label="Users">
+                <thead>
+                    <tr>
+                        <th scope="col">Email</th>
+                        <th scope="col">Display name</th>
+                        <th scope="col">Role</th>
+                        <th scope="col">Max concurrent backtests</th>
+                        <th scope="col">Credits <span class="admin-th-note" id="adminCreditsNote">(checking…)</span></th>
+                        <th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody id="adminUsersBody">
+                    <tr><td colspan="6" class="admin-empty">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="admin-pager">
+            <span id="adminUsersRange" class="admin-pager-range" aria-live="polite"></span>
+            <div class="admin-pager-buttons">
+                <button id="adminPrevBtn" class="auth-btn auth-btn-secondary" type="button" disabled>Previous</button>
+                <button id="adminNextBtn" class="auth-btn auth-btn-secondary" type="button" disabled>Next</button>
+            </div>
+        </div>
+        </div>
+        </section>
+
+        <section id="adminPanelProviders" class="admin-tab-panel" role="tabpanel" aria-labelledby="adminTabProviders" data-admin-panel="providers" hidden>
+        <section id="adminModelProvidersSection" class="admin-provider-section" aria-labelledby="adminModelProvidersHeading">
+            <div class="admin-provider-heading">
+                <div>
+                    <p class="credits-section-kicker">Provider control</p>
+                    <h3 id="adminModelProvidersHeading">Model providers</h3>
+                </div>
+                <span class="credits-admin-badge">Admin only</span>
+            </div>
+            <div class="admin-provider-grid">
+                <div class="admin-provider-list-wrap">
+                    <div class="admin-provider-list-head">
+                        <span class="credits-section-kicker">Approved registry</span>
+                        <button id="adminProviderRefreshBtn" class="credits-icon-btn" type="button" aria-label="Refresh providers" title="Refresh providers">
+                            <svg aria-hidden="true"><use href="#icon-refresh"/></svg>
+                        </button>
+                    </div>
+                    <div id="adminProviderList" class="admin-provider-list" aria-live="polite">
+                        <p class="credits-muted">Loading providers…</p>
+                    </div>
+                </div>
+                <form id="adminProviderForm" class="admin-provider-form">
+                    <p class="credits-section-kicker">Provider registry</p>
+                    <label class="credits-key-field" for="adminProviderId"><span>Provider ID</span><input id="adminProviderId" type="text" maxlength="64" pattern="[a-z0-9_]{2,64}" autocomplete="off" required></label>
+                    <label class="credits-key-field" for="adminProviderDisplayName"><span>Display name</span><input id="adminProviderDisplayName" type="text" maxlength="100" autocomplete="off" required></label>
+                    <label class="credits-key-field" for="adminProviderAdapter"><span>Adapter</span><select id="adminProviderAdapter" class="control-select" autocomplete="off"><option value="openai_compatible">OpenAI-compatible</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option></select></label>
+                    <label class="credits-key-field" for="adminProviderBaseUrl"><span>Approved base URL</span><input id="adminProviderBaseUrl" type="url" maxlength="500" placeholder="https://provider.example/v1" autocomplete="off" required></label>
+                    <div class="admin-provider-checks"><label><input id="adminProviderByok" type="checkbox" checked> BYOK enabled</label><label><input id="adminProviderPlatform" type="checkbox"> Platform enabled</label></div>
+                    <label class="credits-key-field" for="adminProviderStatus"><span>Status</span><select id="adminProviderStatus" class="control-select"><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label>
+                    <label class="credits-key-field" for="adminProviderReason"><span>Reason</span><input id="adminProviderReason" type="text" maxlength="500" value="Provider registry update." autocomplete="off" required></label>
+                    <button class="auth-btn auth-btn-primary" type="submit"><svg aria-hidden="true"><use href="#icon-check-circle"/></svg><span>Save provider</span></button>
+                    <p id="adminProviderStatusMessage" class="credits-status" role="status" aria-live="polite"></p>
+                </form>
+            </div>
+            <div class="admin-platform-key-area">
+                <div class="admin-provider-heading">
+                    <div>
+                        <p class="credits-section-kicker">Platform credential</p>
+                        <h3>ATL model access</h3>
+                    </div>
+                </div>
+                <form id="adminPlatformKeyForm" class="admin-platform-key-form">
+                    <label class="credits-key-field" for="adminPlatformProvider"><span>Provider</span><select id="adminPlatformProvider" class="control-select" required><option value="">Select a provider</option></select></label>
+                    <label class="credits-key-field" for="adminPlatformKeySecret"><span>API key</span><input id="adminPlatformKeySecret" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false" required></label>
+                    <button class="auth-btn auth-btn-primary" type="submit"><svg aria-hidden="true"><use href="#icon-check-circle"/></svg><span>Save and verify</span></button>
+                </form>
+                <p id="adminPlatformKeyStatus" class="credits-status" role="status" aria-live="polite"></p>
+            </div>
+        </section>
+        </section>
+
+        <section id="adminPanelActivity" class="admin-tab-panel" role="tabpanel" aria-labelledby="adminTabActivity" data-admin-panel="activity" hidden>
+            <div class="admin-credits-activity">
+                <div class="admin-credits-subheading">
+                    <div>
+                        <p class="credits-section-kicker">Audit trail</p>
+                        <h4>Grant Activity</h4>
+                    </div>
+                    <button id="adminCreditsActivityMoreBtn" class="auth-btn auth-btn-secondary" type="button" hidden>Load more</button>
+                </div>
+                <div class="admin-credits-table-wrap">
+                    <table class="admin-credits-activity-table" aria-label="Grant Credits activity">
+                        <thead><tr><th scope="col">Time</th><th scope="col">Operation</th><th scope="col">Account</th><th scope="col">Amount</th><th scope="col">Source</th><th scope="col">Reason</th></tr></thead>
+                        <tbody id="adminCreditsActivityBody"><tr><td colspan="6" class="admin-empty">No Grant activity yet.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <dialog id="adminGrantReasonDialog" class="credits-refund-dialog admin-grant-reason-dialog" aria-labelledby="adminGrantReasonTitle">
+        <form id="adminGrantReasonForm">
+            <div class="credits-refund-head">
+                <div>
+                    <p class="credits-section-kicker">Grant allocation</p>
+                    <h2 id="adminGrantReasonTitle">Confirm Assign</h2>
+                </div>
+                <button id="adminGrantReasonClose" class="credits-icon-btn" type="button" aria-label="Close assign confirmation" title="Close">
+                    <svg aria-hidden="true"><use href="#icon-x"/></svg>
+                </button>
+            </div>
+            <p id="adminGrantReasonSummary" class="credits-refund-order"></p>
+            <label class="credits-key-field" for="adminGrantReason"><span>Reason</span><input id="adminGrantReason" type="text" maxlength="500" value="Approved Grant allocation." required></label>
+            <p id="adminGrantReasonStatus" class="credits-status" role="status" aria-live="polite"></p>
+            <div class="credits-refund-actions">
+                <button id="adminGrantReasonCancel" class="auth-btn auth-btn-secondary" type="button">Cancel</button>
+                <button id="adminGrantReasonSubmit" class="auth-btn auth-btn-primary" type="submit">Assign Credits</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="creditsRefundDialog" class="credits-refund-dialog" aria-labelledby="creditsRefundTitle">
+        <form id="creditsRefundForm" method="dialog">
+            <div class="credits-refund-head">
+                <div>
+                    <p class="credits-section-kicker">Admin refund</p>
+                    <h2 id="creditsRefundTitle">Refund Credits purchase</h2>
+                </div>
+                <button id="creditsRefundClose" class="credits-icon-btn" type="button" aria-label="Close refund dialog" title="Close">
+                    <svg aria-hidden="true"><use href="#icon-x"/></svg>
+                </button>
+            </div>
+            <p id="creditsRefundOrder" class="credits-refund-order"></p>
+            <label class="credits-refund-field" for="creditsRefundAmount">Refund amount</label>
+            <div class="credits-money-input">
+                <span aria-hidden="true">$</span>
+                <input id="creditsRefundAmount" inputmode="decimal" autocomplete="off" required>
+            </div>
+            <p id="creditsRefundLimit" class="credits-muted"></p>
+            <p id="creditsRefundStatus" class="credits-status" role="status" aria-live="polite"></p>
+            <div class="credits-refund-actions">
+                <button id="creditsRefundCancel" class="auth-btn auth-btn-secondary" type="button">Cancel</button>
+                <button id="creditsRefundSubmit" class="auth-btn auth-btn-danger" type="submit">Issue refund</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- All deferred so the Chart.js CDN tag in <head> (also deferred) can
+         stay first in execution order: deferred scripts run in document
+         order, all before DOMContentLoaded. -->
+    <script src="market-events/mockMarketEvents.js" defer></script>
+    <script src="market-events/marketEventRelativeTime.js" defer></script>
+    <script src="market-events/MarketEventCard.js" defer></script>
+    <script src="market-events/MarketEventFeed.js" defer></script>
+    <script src="js/portfolio.js?v=17" defer></script>
+    <script src="js/backtest-comparison.js?v=1" defer></script>
+    <script src="app.js?v=125" defer></script>
+    <script src="js/analytics.js?v=1" defer></script>
+    <script src="js/agent-editor.js?v=30" defer></script>
+    <script src="js/credit-format.js?v=1" defer></script>
+    <script src="js/credits.js?v=8" defer></script>
+    <script src="js/admin-model-providers.js?v=1" defer></script>
+    <script src="js/admin-credits.js?v=6" defer></script>
+    <script src="js/admin-analytics.js?v=2" defer></script>
+    <script src="js/admin-tabs.js?v=3" defer></script>
+    <script src="js/leaderboard.js?v=32" defer></script>
+    <script src="home-page.js?v=50" defer></script>
+    <!-- Load order: must come after app.js (API/API_BASE/escapeHtml) and
+         market-events/marketEventRelativeTime.js (formatMarketEventRelativeTime),
+         both loaded above — not beside the market-events/* block, which loads
+         before app.js. -->
+    <script src="home-news-signals.js" defer></script>
+    <!-- Never `hidden`: a live region has to stay rendered to be monitored. It
+         hides itself visually via .app-toast's opacity + pointer-events. -->
+    <div id="appToast" class="app-toast" role="status" aria-live="polite"></div>
+</body>
+</html>

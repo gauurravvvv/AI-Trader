@@ -1,0 +1,30 @@
+name: "ATL CodeQL config"
+
+# Query suite applied to every language in the matrix.
+#
+# `security-and-quality` is the broad suite: the security queries plus
+# maintainability/quality checks. It matches the "security and quality" intent
+# behind adding this scan, and is a superset of `security-extended`.
+#
+# Trade-off: on a repo that has never been scanned, the first run of this suite
+# can surface a large batch of *low-severity quality* findings (unused code,
+# style-ish issues) alongside the security ones. If that signal-to-noise is too
+# low, narrow this one line to `security-extended` (security only) or the
+# default suite — no other change needed.
+queries:
+  - uses: security-and-quality
+
+paths-ignore:
+  # Built Vite bundle of the landing page: generated + minified, and its real
+  # source already lives in dashboard/landing/src. Scanning the bundle is pure
+  # noise and can crowd out findings on the hand-written frontend JS.
+  - dashboard/frontend/assets
+  # Vendored / generated JS is never our code to fix.
+  - "**/node_modules"
+  - "**/dist"
+  # Imported research code (NeurIPS 2025 FinAgent framework) — per CLAUDE.md a
+  # separate project, not wired into the shipping dashboard or deployed. Its
+  # first scan contributed 771 of 1079 alerts (including files that don't
+  # parse); scanning it buries the dashboard findings we act on. Excluding a
+  # path auto-closes its existing alerts on the next default-branch scan.
+  - orchestration

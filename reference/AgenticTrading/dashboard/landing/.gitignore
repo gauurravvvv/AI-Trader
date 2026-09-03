@@ -1,0 +1,4 @@
+# Build tooling — never commit these; the shipped bundle lives in ../frontend/.
+node_modules/
+dist/
+*.local

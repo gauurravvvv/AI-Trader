@@ -1,0 +1,71 @@
+name: CodeQL
+
+# Static security + quality analysis (GitHub CodeQL, advanced setup).
+#
+# This is intentionally a SEPARATE workflow from ci.yml and is NON-GATING:
+#   * The repo has no branch protection, so nothing blocks a merge on it.
+#   * The prod deploy in ci.yml gates only on `backend-tests`, not on this job.
+# Its purpose is to surface findings in the repo's Security > Code scanning tab
+# (the repo had no code scanning before this) — not to add a merge hurdle.
+#
+# Advanced setup (this file) is mutually exclusive with CodeQL "default setup"
+# in the Security tab UI: enabling default setup there would DISABLE this
+# workflow. Manage the scan here, in version control.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly re-scan (Mondays 06:31 UTC) so newly-published CodeQL queries
+    # run against existing code, not only against new commits.
+    - cron: "31 6 * * 1"
+  # Manual re-run — e.g. after narrowing the query suite in codeql-config.yml —
+  # without having to push an empty commit.
+  workflow_dispatch:
+
+# Cancel a superseded run only on pull requests (github.ref = refs/pull/N/merge);
+# pushes to main keep every commit's scan, since code-scanning results are
+# tracked per-commit on the default branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload SARIF results to code scanning
+      packages: read # download the CodeQL query packs
+      actions: read # required on private repos; harmless on public
+      contents: read # checkout
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Python is the dominant surface (backend, orchestration, SDK).
+          - language: python
+            build-mode: none
+          # Hand-written frontend JS (some with XSS history) + the React/TS
+          # landing source. build-mode: none = analyze source directly.
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

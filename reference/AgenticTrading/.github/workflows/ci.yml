@@ -1,0 +1,126 @@
+name: CI
+
+# Runs the backend and packaging test suites on every push and PR to main.
+# On pushes to main (and manual dispatch), additionally triggers a Render
+# prod deploy via the service's Deploy Hook once backend tests pass — the
+# service's native autoDeploy never fires for this repo (Render's GitHub App
+# isn't authorized on the org), so this workflow IS the deploy path.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  # Manual escape hatch: re-fire the deploy without a new commit
+  # (e.g. right after the RENDER_DEPLOY_HOOK_URL secret is first added).
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    # A real Postgres for the @pg_only tier. Without it those tests skip and the
+    # Postgres store backends would reach prod never having executed -- where the
+    # first run is _init_schema() at import time, and a DDL error means the app
+    # does not boot. Cheap insurance: the container starts in a couple of seconds.
+    services:
+      postgres:
+        # Pinned to prod's major version: the live Neon database runs
+        # PostgreSQL 18.x (checked via version() during the #134 pre-merge
+        # review). This tier exists to catch dialect problems before prod, so it
+        # must ship to the same major version prod runs -- see issue #138.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: atl_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-timeout matplotlib
+
+      - name: Run backend tests
+        # DATABASE_PATH is a belt-and-suspenders backstop: tests/conftest.py
+        # already self-isolates into a tempdir, but if that fixture ever
+        # regresses, this keeps CI from writing into the committed seed DB.
+        env:
+          DATABASE_PATH: ${{ runner.temp }}/ci-backtest.db
+          # Selects the live tier of the *_postgres.py tests. Note this is NOT
+          # CONTENT_DATABASE_URL: conftest.py strips that so the suite's own stores stay
+          # on SQLite. This URL is only ever passed explicitly to a twin's
+          # constructor by a @pg_only fixture.
+          TEST_POSTGRES_URL: postgresql://postgres:test@localhost:5432/atl_test
+        run: pytest dashboard/backend/tests/ --timeout=180 -p no:cacheprovider
+
+  packaging-tests:
+    name: Packaging (agentictrading) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run packaging tests
+        working-directory: packaging/agentictrading
+        run: pytest tests/ -p no:cacheprovider
+
+  deploy-prod:
+    name: Trigger Render prod deploy
+    # Deploy only from main pushes (or a manual dispatch on main), and only
+    # after the backend suite is green. packaging-tests is deliberately NOT a
+    # gate: it covers the PyPI SDK, which isn't part of the Render service —
+    # an SDK-only failure shouldn't block shipping a backend fix.
+    needs: backend-tests
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    # Serialize deploy triggers so rapid merges don't race; never cancel an
+    # in-flight trigger (the hook call is near-instant anyway).
+    concurrency:
+      group: render-prod-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Fire Render deploy hook
+        env:
+          # Repo secret holding the full Deploy Hook URL
+          # (https://api.render.com/deploy/srv-...?key=...). The URL itself is
+          # the credential — scoped to "trigger a deploy of this one service",
+          # unlike an account-wide API key.
+          DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          # Fail loudly (red main) when the secret is missing: a silent
+          # non-deploy is exactly the failure mode this job exists to fix.
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL secret is not set — prod deploy NOT triggered." \
+                 "Add the service's Deploy Hook URL as an Actions secret (repo Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          # --fail: any non-2xx response fails the job; --retry: rides out
+          # transient network/5xx hiccups (Render dedupes rapid re-triggers).
+          curl --fail --silent --show-error --retry 3 -X POST "$DEPLOY_HOOK_URL"
+          echo
+          echo "Render deploy triggered."

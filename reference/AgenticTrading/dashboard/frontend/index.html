@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Agentic Trading Lab</title>
+    <meta name="description" content="Talk to agents. Test trading ideas. Try AI trading agents on real market data — no code required." />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:title" content="Agentic Trading Lab" />
+    <meta property="og:description" content="Talk to agents. Test trading ideas. Try AI trading agents on real market data — no code required." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Agentic Trading Lab" />
+    <meta name="twitter:description" content="Talk to agents. Test trading ideas. Try AI trading agents on real market data — no code required." />
+    <link rel="icon" type="image/png" href="/images/atltransparent.png" />
+    <link rel="apple-touch-icon" href="/images/atltransparent.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style id="landing-auth-patch">
+      /* Hide page until auth gate finishes (avoids flash for logged-in users). */
+      html.landing-auth-pending body { visibility: hidden; }
+      html.landing-ready body { visibility: visible; }
+
+      /* Auth modal on landing (signup / sign-in stay on this page) */
+      .landing-auth-modal[hidden] { display: none !important; }
+      .landing-auth-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .landing-auth-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.65);
+        backdrop-filter: blur(4px);
+      }
+      .landing-auth-panel {
+        position: relative;
+        width: min(420px, 100%);
+        background: #0b1220;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+        padding: 28px 24px 24px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+        color: #f8fafc;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .landing-auth-close {
+        position: absolute;
+        top: 10px;
+        right: 14px;
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        font-size: 24px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .landing-auth-close:hover { color: #f8fafc; }
+      .landing-auth-title {
+        margin: 0 0 6px;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+      .landing-auth-subtitle {
+        margin: 0 0 20px;
+        color: #94a3b8;
+        font-size: 0.875rem;
+        line-height: 1.4;
+      }
+      .landing-auth-form { display: grid; gap: 14px; }
+      .landing-auth-field {
+        display: grid;
+        gap: 6px;
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
+      .landing-auth-field[hidden] { display: none !important; }
+      .landing-auth-field input {
+        padding: 10px 12px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 8px;
+        background: #020617;
+        color: #f8fafc;
+        font-size: 0.95rem;
+      }
+      .landing-auth-field input:focus {
+        outline: none;
+        border-color: #38bdf8;
+      }
+      .landing-auth-error {
+        margin: 0;
+        color: #f87171;
+        font-size: 0.8rem;
+      }
+      .landing-auth-error[hidden] { display: none !important; }
+      .landing-auth-submit {
+        padding: 11px 14px;
+        border: none;
+        border-radius: 8px;
+        background: #0ea5e9;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.95rem;
+        cursor: pointer;
+        width: 100%;
+      }
+      .landing-auth-submit:hover { filter: brightness(1.08); }
+      .landing-auth-submit:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+      .landing-auth-switch {
+        margin: 16px 0 0;
+        text-align: center;
+      }
+      .landing-auth-link {
+        border: none;
+        background: transparent;
+        color: #38bdf8;
+        font-size: 0.85rem;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+    </style>
+    <script>
+      // Landing is for first-time / logged-out visitors only.
+      // Logged-in users go straight to the dashboard.
+      document.documentElement.classList.add('landing-auth-pending');
+      (function () {
+        var APP_URL = '/app';
+        var AUTH_TOKEN_KEY = 'auth-token';
+        var AUTH_USER_KEY = 'auth-user';
+        var host = window.location.hostname;
+        var API_BASE = (host === 'localhost' || host === '127.0.0.1')
+          ? window.location.origin
+          : '';
+
+        function clearAuth() {
+          try {
+            localStorage.removeItem(AUTH_TOKEN_KEY);
+            localStorage.removeItem(AUTH_USER_KEY);
+          } catch (e) { /* ignore */ }
+        }
+
+        function showLanding() {
+          document.documentElement.classList.remove('landing-auth-pending');
+          document.documentElement.classList.add('landing-ready');
+        }
+
+        function redirectToDashboard() {
+          window.location.replace(APP_URL);
+        }
+
+        // Optional ?stay=1 keeps signed-in users on the marketing page.
+        var stayOnLanding = false;
+        try {
+          stayOnLanding = new URLSearchParams(window.location.search).get('stay') === '1';
+        } catch (e) { stayOnLanding = false; }
+
+        var cachedUser = null;
+        try { cachedUser = localStorage.getItem(AUTH_USER_KEY); } catch (e) { cachedUser = null; }
+
+        if (!cachedUser || stayOnLanding) {
+          showLanding();
+          return;
+        }
+
+        fetch(API_BASE + '/api/auth/me', {
+          credentials: 'include',
+        }).then(function (res) {
+          if (res.ok) {
+            redirectToDashboard();
+            return;
+          }
+          clearAuth();
+          showLanding();
+        }).catch(function () {
+          // Network error: keep local session and send them to the app.
+          redirectToDashboard();
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-CByzv6VS.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DivKYRS2.css">
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <div id="landingAuthModal" class="landing-auth-modal" hidden>
+      <div class="landing-auth-backdrop" id="landingAuthBackdrop"></div>
+      <div class="landing-auth-panel" role="dialog" aria-modal="true" aria-labelledby="landingAuthTitle">
+        <button id="landingAuthClose" class="landing-auth-close" type="button" aria-label="Close">×</button>
+        <h2 id="landingAuthTitle" class="landing-auth-title">Sign up</h2>
+        <p id="landingAuthSubtitle" class="landing-auth-subtitle">Create an account to open your dashboard.</p>
+        <form id="landingAuthForm" class="landing-auth-form">
+          <label class="landing-auth-field">
+            <span>Email</span>
+            <input id="landingAuthEmail" type="email" autocomplete="email" required>
+          </label>
+          <label id="landingAuthDisplayNameField" class="landing-auth-field">
+            <span>Display name</span>
+            <input id="landingAuthDisplayName" type="text" autocomplete="name">
+          </label>
+          <label class="landing-auth-field">
+            <span>Password</span>
+            <input id="landingAuthPassword" type="password" autocomplete="new-password" required minlength="8">
+          </label>
+          <p id="landingAuthForgot" class="landing-auth-switch" hidden>
+            <a class="landing-auth-link" href="/app?auth=reset">Forgot password?</a>
+          </p>
+          <p id="landingAuthError" class="landing-auth-error" hidden></p>
+          <button id="landingAuthSubmit" class="landing-auth-submit" type="submit">Create account</button>
+        </form>
+        <p class="landing-auth-switch">
+          <button id="landingAuthSwitch" class="landing-auth-link" type="button">Already have an account? Sign in</button>
+        </p>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var APP_URL = '/app';
+        var AUTH_TOKEN_KEY = 'auth-token';
+        var AUTH_USER_KEY = 'auth-user';
+        var host = window.location.hostname;
+        var API_BASE = (host === 'localhost' || host === '127.0.0.1')
+          ? window.location.origin
+          : '';
+
+        var authMode = 'signup';
+
+        function setAuthMode(mode) {
+          authMode = mode === 'login' ? 'login' : 'signup';
+          var title = document.getElementById('landingAuthTitle');
+          var subtitle = document.getElementById('landingAuthSubtitle');
+          var submitBtn = document.getElementById('landingAuthSubmit');
+          var switchBtn = document.getElementById('landingAuthSwitch');
+          var passwordInput = document.getElementById('landingAuthPassword');
+          var displayNameField = document.getElementById('landingAuthDisplayNameField');
+          var displayNameInput = document.getElementById('landingAuthDisplayName');
+          var errorEl = document.getElementById('landingAuthError');
+
+          if (title) title.textContent = authMode === 'signup' ? 'Sign up' : 'Sign in';
+          if (subtitle) {
+            subtitle.textContent = authMode === 'signup'
+              ? 'Create an account to open your dashboard.'
+              : 'Sign in to continue to your dashboard.';
+          }
+          if (submitBtn) submitBtn.textContent = authMode === 'signup' ? 'Create account' : 'Sign in';
+          if (switchBtn) {
+            switchBtn.textContent = authMode === 'signup'
+              ? 'Already have an account? Sign in'
+              : 'Need an account? Sign up';
+          }
+          if (passwordInput) {
+            passwordInput.autocomplete = authMode === 'signup' ? 'new-password' : 'current-password';
+          }
+          if (displayNameField) displayNameField.hidden = authMode !== 'signup';
+          // No reset UI here: the reset flow lives in /app only, so this stays
+          // a plain deep link, shown in login mode where "I forgot" happens.
+          var forgotEl = document.getElementById('landingAuthForgot');
+          if (forgotEl) forgotEl.hidden = authMode !== 'login';
+          if (displayNameInput) {
+            displayNameInput.required = authMode === 'signup';
+            if (authMode !== 'signup') displayNameInput.value = '';
+          }
+          if (errorEl) errorEl.hidden = true;
+        }
+
+        function openAuthModal(mode) {
+          var modal = document.getElementById('landingAuthModal');
+          if (!modal) return;
+          setAuthMode(mode);
+          modal.hidden = false;
+          document.body.style.overflow = 'hidden';
+          var email = document.getElementById('landingAuthEmail');
+          if (email) setTimeout(function () { email.focus(); }, 0);
+        }
+
+        function closeAuthModal() {
+          var modal = document.getElementById('landingAuthModal');
+          var form = document.getElementById('landingAuthForm');
+          var errorEl = document.getElementById('landingAuthError');
+          if (modal) modal.hidden = true;
+          if (form) form.reset();
+          if (errorEl) errorEl.hidden = true;
+          document.body.style.overflow = '';
+          setAuthMode('signup');
+        }
+
+        async function authRequest(path, body) {
+          var response = await fetch(API_BASE + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(body),
+          });
+          var data = null;
+          try { data = await response.json(); } catch (e) { data = null; }
+          if (!response.ok) {
+            var message = data && (data.detail || data.error) || ('HTTP ' + response.status);
+            throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
+          }
+          return data;
+        }
+
+        function goToDashboardLoggedIn(user) {
+          try {
+            try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch (e) { /* ignore */ }
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+            // Land authenticated users on My Agents, for both sign-up and
+            // sign-in. Sign-up used to go to '?view=home', which is a second
+            // marketing hero -- the same "Talk to Agents / Test Trading Ideas"
+            // pitch and a "Get Started" button the user had just clicked. Sign-in
+            // used to go to a bare '/app', which restores whatever tab was last
+            // visited while logged out, so a returning user could land on
+            // Competition. Neither put anyone near their agent.
+            // 'nav-state' must match app.js's NAV_STATE_KEY -- this landing
+            // page has no build step to share that constant across the split.
+            // The '?view=' below already wins over saved nav-state on boot; this
+            // write keeps a *later* bare '/app' visit off the stale tab too.
+            localStorage.setItem(
+              'nav-state',
+              JSON.stringify({ page: 'playground', playgroundTab: 'agents' })
+            );
+          } catch (e) { /* ignore */ }
+          window.location.href = APP_URL + '?view=agents';
+        }
+
+        function initAuthModal() {
+          var closeBtn = document.getElementById('landingAuthClose');
+          var backdrop = document.getElementById('landingAuthBackdrop');
+          var switchBtn = document.getElementById('landingAuthSwitch');
+          var form = document.getElementById('landingAuthForm');
+
+          closeBtn && closeBtn.addEventListener('click', closeAuthModal);
+          backdrop && backdrop.addEventListener('click', closeAuthModal);
+          switchBtn && switchBtn.addEventListener('click', function () {
+            setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+          });
+
+          document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') return;
+            var modal = document.getElementById('landingAuthModal');
+            if (modal && !modal.hidden) closeAuthModal();
+          });
+
+          form && form.addEventListener('submit', async function (event) {
+            event.preventDefault();
+            var email = (document.getElementById('landingAuthEmail') || {}).value;
+            var displayName = (document.getElementById('landingAuthDisplayName') || {}).value;
+            var password = (document.getElementById('landingAuthPassword') || {}).value;
+            var errorEl = document.getElementById('landingAuthError');
+            var submitBtn = document.getElementById('landingAuthSubmit');
+
+            email = (email || '').trim();
+            displayName = (displayName || '').trim();
+            if (!email || !password) return;
+
+            if (authMode === 'signup' && !displayName) {
+              if (errorEl) {
+                errorEl.textContent = 'Display name is required for sign up.';
+                errorEl.hidden = false;
+              }
+              return;
+            }
+
+            if (submitBtn) submitBtn.disabled = true;
+            if (errorEl) errorEl.hidden = true;
+
+            try {
+              var data = authMode === 'signup'
+                ? await authRequest('/api/auth/signup', {
+                    email: email,
+                    display_name: displayName,
+                    password: password,
+                  })
+                : await authRequest('/api/auth/login', {
+                    email: email,
+                    password: password,
+                  });
+              goToDashboardLoggedIn(data.user);
+            } catch (error) {
+              if (errorEl) {
+                errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+                errorEl.hidden = false;
+              }
+              if (submitBtn) submitBtn.disabled = false;
+            }
+          });
+        }
+
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          if (!target || !target.closest) return;
+
+          var authTrigger = target.closest('[data-landing-auth]');
+          if (authTrigger) {
+            event.preventDefault();
+            openAuthModal(authTrigger.getAttribute('data-landing-auth') === 'login' ? 'login' : 'signup');
+            return;
+          }
+
+          // Fallback for CTA labels that omit the data attribute.
+          var button = target.closest('button, a');
+          if (!button) return;
+          var label = (button.textContent || '').trim();
+          if (label === 'Start Free' || label === 'Get Started') {
+            event.preventDefault();
+            openAuthModal('signup');
+          }
+        });
+
+        initAuthModal();
+      })();
+    </script>
+  </body>
+</html>
