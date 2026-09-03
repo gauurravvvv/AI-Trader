@@ -51,6 +51,12 @@ importers:
         specifier: ^7.6.11
         version: 7.6.13
 
+  packages/logger:
+    dependencies:
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+
 packages:
 
   '@esbuild/aix-ppc64@0.21.5':
