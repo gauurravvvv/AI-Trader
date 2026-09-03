@@ -1,0 +1,19 @@
+{
+  "name": "@aegis/alpha",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "decimal.js": "^10.4.3",
+    "@aegis/claude": "workspace:*",
+    "@aegis/budget": "workspace:*",
+    "@aegis/logger": "workspace:*",
+    "@aegis/edgar": "workspace:*",
+    "@aegis/marketdata": "workspace:*"
+  }
+}

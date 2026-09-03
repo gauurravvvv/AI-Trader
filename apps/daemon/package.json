@@ -11,6 +11,14 @@
     "@aegis/budget": "workspace:*",
     "@aegis/agents": "workspace:*",
     "@aegis/claude": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@aegis/brokers": "workspace:*",
+    "@aegis/marketdata": "workspace:*",
+    "@aegis/ledger": "workspace:*",
+    "@aegis/risk": "workspace:*",
+    "@aegis/edgar": "workspace:*",
+    "@aegis/pipeline": "workspace:*",
+    "@aegis/alpha": "workspace:*",
+    "@aegis/dashboard": "workspace:*"
   }
 }

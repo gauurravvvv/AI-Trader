@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aegis</title>
+<style>
+  :root {
+    --paper:#F3F5F1; --bar:#E4EDE2; --sunk:#EAEEE7; --ink:#17211D; --ink2:#4A5750;
+    --ink3:#77837B; --rule:#C3CEBF; --rule2:#DBE2D7; --accent:#1D4E6B;
+    --flag:#96322C; --ok:#2F6B43; --warn:#8A6A18;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+    --paper:#131A17; --bar:#1B2521; --sunk:#182120; --ink:#E4EAE2; --ink2:#A9B5AD;
+    --ink3:#7E8C84; --rule:#2E3B35; --rule2:#232E29; --accent:#7FB2CE;
+    --flag:#D98B84; --ok:#6FB98A; --warn:#D8B96A;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font:400 14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif}
+  .mono,td.num,th.num,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-variant-numeric:tabular-nums}
+  header{border-bottom:2px solid var(--ink);padding:.9rem 1.25rem;display:flex;
+    align-items:center;gap:1rem;flex-wrap:wrap;position:sticky;top:0;background:var(--paper);z-index:10}
+  h1{font-size:1.05rem;margin:0;letter-spacing:-.01em}
+  .tag{font-family:ui-monospace,monospace;font-size:.66rem;font-weight:600;letter-spacing:.09em;
+    text-transform:uppercase;padding:.22rem .5rem;border:1.5px solid currentColor;border-radius:2px}
+  .tag.paper{color:var(--flag)} .tag.shadow{color:var(--warn)} .tag.auto{color:var(--ok)}
+  .tag.halted{color:var(--flag);background:var(--flag);color:var(--paper)}
+  .spacer{flex:1}
+  button{font:inherit;font-size:.8rem;padding:.35rem .8rem;border:1.5px solid var(--flag);
+    background:transparent;color:var(--flag);border-radius:2px;cursor:pointer}
+  button:hover{background:var(--flag);color:var(--paper)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));
+    gap:1px;background:var(--rule)}
+  section{background:var(--paper);padding:1rem 1.25rem;min-width:0}
+  section.wide{grid-column:1/-1}
+  h2{font-size:.68rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink3);margin:0 0 .7rem}
+  .scroll{overflow-x:auto;max-height:340px;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-size:.78rem}
+  th{text-align:left;font-family:ui-monospace,monospace;font-weight:600;font-size:.62rem;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);
+    padding:.35rem .5rem;border-bottom:1.5px solid var(--ink);white-space:nowrap;
+    position:sticky;top:0;background:var(--paper)}
+  td{padding:.35rem .5rem;border-bottom:1px solid var(--rule2);vertical-align:top}
+  tbody tr:nth-child(odd){background:color-mix(in srgb,var(--bar) 55%,transparent)}
+  td.num,th.num{text-align:right}
+  .muted{color:var(--ink3)}
+  .pos{color:var(--ok)} .neg{color:var(--flag)} .warnc{color:var(--warn)}
+  .pill{font-family:ui-monospace,monospace;font-size:.62rem;padding:.1rem .35rem;
+    border:1px solid currentColor;border-radius:2px;white-space:nowrap}
+  .gauge{height:8px;background:var(--sunk);border:1px solid var(--rule);border-radius:2px;
+    overflow:hidden;margin:.4rem 0}
+  .gauge > i{display:block;height:100%;background:var(--ok)}
+  .gauge.warn > i{background:var(--warn)} .gauge.crit > i{background:var(--flag)}
+  .kv{display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.8rem}
+  .kv div span{display:block;font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink3)}
+  .kv div b{font-family:ui-monospace,monospace;font-size:1.05rem;font-weight:600}
+  .empty{color:var(--ink3);font-size:.78rem;padding:.5rem 0}
+  .tv{border:1px solid var(--rule);height:400px}
+  footer{padding:1rem 1.25rem;color:var(--ink3);font-size:.72rem;border-top:1px solid var(--rule)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Aegis</h1>
+  <span class="tag paper">Paper money only</span>
+  <span class="tag" id="autonomy">—</span>
+  <span class="tag" id="venue">—</span>
+  <span class="spacer"></span>
+  <span class="mono muted" id="clock"></span>
+  <button id="halt">Kill switch</button>
+</header>
+
+<div class="grid">
+  <section>
+    <h2>Budget — programmatic credit</h2>
+    <div class="kv">
+      <div><span>Spent</span><b id="bspent">$0</b></div>
+      <div><span>Cap</span><b id="bcap">$0</b></div>
+      <div><span>Tier</span><b id="btier">—</b></div>
+    </div>
+    <div class="gauge" id="bgauge"><i style="width:0%"></i></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Avg ms</th></tr></thead>
+      <tbody id="costs"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Positions</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">Realised</th></tr></thead>
+      <tbody id="positions"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Decisions — reasoning chain</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Symbol</th><th>Side</th><th class="num">SUE</th><th class="num">Audit</th>
+        <th>Tier</th><th>Status</th><th>Rationale / reject</th><th>When</th></tr></thead>
+      <tbody id="decisions"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Orders</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Symbol</th><th>Side</th><th class="num">Qty</th><th>Status</th><th>When</th></tr></thead>
+      <tbody id="orders"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Fills</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th>When</th></tr></thead>
+      <tbody id="fills"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Signal bus</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Type</th><th>Symbol</th><th>From</th><th>Consumed by</th></tr></thead>
+      <tbody id="signals"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Model calls</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Agent</th><th>Model</th><th class="num">In</th><th class="num">Out</th>
+        <th class="num">Cost</th><th class="num">Sec</th></tr></thead>
+      <tbody id="llm"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Agent activity</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Agent</th><th>Action</th><th>Symbol</th><th>Detail</th><th>When</th></tr></thead>
+      <tbody id="logs"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Market — TradingView</h2>
+    <div class="tv"><div class="tradingview-widget-container" style="height:100%">
+      <div id="tvchart" style="height:100%"></div>
+    </div></div>
+  </section>
+</div>
+
+<footer>
+  Paper trading only. Educational and research use — not financial advice.
+  Venue fills are simulated with spread, slippage and full cost modelling.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 2) => Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const cost = (n) => { const v = Number(n); return v === 0 ? '$0' : v < 0.001 ? '$' + v.toFixed(6) : v < 1 ? '$' + v.toFixed(4) : '$' + v.toFixed(2); };
+const when = (s) => s ? String(s).replace('T', ' ').slice(0, 19) : '—';
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const rows = (el, data, fn, cols) => {
+  el.innerHTML = data.length
+    ? data.map(fn).join('')
+    : `<tr><td colspan="${cols}" class="empty">nothing yet</td></tr>`;
+};
+
+function render(s) {
+  $('autonomy').textContent = s.autonomy;
+  $('autonomy').className = 'tag ' + (s.autonomy === 'AUTO' ? 'auto' : 'shadow');
+  $('venue').textContent = s.venue;
+  $('venue').className = 'tag';
+  $('halt').textContent = s.halted ? 'HALTED — resume' : 'Kill switch';
+
+  const pct = Math.min(100, (Number(s.budget.spent) / s.budget.cap) * 100);
+  $('bspent').textContent = cost(s.budget.spent);
+  $('bcap').textContent = '$' + s.budget.cap;
+  $('btier').textContent = s.budget.tier;
+  const g = $('bgauge');
+  g.className = 'gauge' + (pct >= 85 ? ' crit' : pct >= 70 ? ' warn' : '');
+  g.firstElementChild.style.width = pct.toFixed(1) + '%';
+
+  rows($('costs'), s.costByAgent, (r) =>
+    `<tr><td>${esc(r.agent)}</td><td class="num">${r.calls}</td><td class="num">${cost(r.cost)}</td><td class="num">${fmt(r.avg_latency, 0)}</td></tr>`, 4);
+
+  rows($('positions'), s.positions, (r) => {
+    const pnl = Number(r.realised_pnl);
+    return `<tr><td><b>${esc(r.symbol)}</b></td><td class="num">${r.qty}</td><td class="num">${fmt(r.avg_cost)}</td><td class="num ${pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : ''}">${fmt(pnl)}</td></tr>`;
+  }, 4);
+
+  rows($('decisions'), s.decisions, (r) => {
+    const cls = r.status === 'EXECUTED' ? 'pos' : r.status === 'REJECTED' ? 'neg' : 'warnc';
+    return `<tr><td class="num muted">${r.id}</td><td><b>${esc(r.symbol)}</b></td><td>${esc(r.side)}</td>
+      <td class="num">${r.sue_score ?? '—'}</td><td class="num">${r.audit_score ?? '—'}</td>
+      <td><span class="pill">${esc(r.audit_tier ?? '—')}</span></td>
+      <td class="${cls}">${esc(r.status)}</td>
+      <td class="muted">${esc((r.reject_reason || r.rationale || '').slice(0, 110))}</td>
+      <td class="mono muted">${when(r.created_at)}</td></tr>`;
+  }, 9);
+
+  rows($('orders'), s.orders, (r) =>
+    `<tr><td class="num muted">${r.id}</td><td><b>${esc(r.symbol)}</b></td><td>${esc(r.side)}</td>
+     <td class="num">${r.qty}</td><td>${esc(r.status)}</td><td class="mono muted">${when(r.created_at)}</td></tr>`, 6);
+
+  rows($('fills'), s.fills, (r) =>
+    `<tr><td><b>${esc(r.symbol)}</b></td><td>${esc(r.side)}</td><td class="num">${r.qty}</td>
+     <td class="num">${fmt(r.price)}</td><td class="num">${fmt(r.fee, 4)}</td>
+     <td class="mono muted">${when(r.filled_at)}</td></tr>`, 6);
+
+  rows($('signals'), s.signals, (r) =>
+    `<tr><td class="num muted">${r.id}</td><td>${esc(r.signal_type)}</td><td><b>${esc(r.symbol ?? '—')}</b></td>
+     <td class="muted">${esc(r.agent)}</td>
+     <td class="${r.consumed ? 'muted' : 'warnc'}">${r.consumed ? esc(r.consumed_by) : 'pending'}</td></tr>`, 5);
+
+  rows($('llm'), s.llmCalls, (r) =>
+    `<tr><td>${esc(r.agent)}</td><td>${esc(r.model)}</td><td class="num">${Number(r.tokens_in).toLocaleString()}</td>
+     <td class="num">${Number(r.tokens_out).toLocaleString()}</td><td class="num">${cost(r.cost_usd)}</td>
+     <td class="num">${(r.latency_ms / 1000).toFixed(1)}</td></tr>`, 6);
+
+  rows($('logs'), s.agentLogs, (r) =>
+    `<tr><td>${esc(r.agent)}</td><td>${esc(r.action)}</td><td>${esc(r.symbol ?? '—')}</td>
+     <td class="muted">${esc((r.details ?? '').slice(0, 130))}</td>
+     <td class="mono muted">${when(r.created_at)}</td></tr>`, 5);
+}
+
+$('halt').onclick = async () => {
+  await fetch('/api/halt', { method: 'POST' });
+};
+
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+
+const es = new EventSource('/events');
+es.addEventListener('snapshot', (e) => render(JSON.parse(e.data)));
+es.addEventListener('tick', (e) => render(JSON.parse(e.data)));
+es.addEventListener('halt', () => fetch('/api/snapshot').then((r) => r.json()).then(render));
+
+// TradingView widget — ships with its own data, no key required.
+const tv = document.createElement('script');
+tv.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+tv.async = true;
+tv.innerHTML = JSON.stringify({
+  autosize: true, symbol: 'NASDAQ:NVDA', interval: 'D', timezone: 'Etc/UTC',
+  theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  style: '1', locale: 'en', hide_side_toolbar: true, allow_symbol_change: true,
+});
+$('tvchart').appendChild(tv);
+</script>
+</body>
+</html>

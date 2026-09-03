@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../claude"
+    },
+    {
+      "path": "../budget"
+    },
+    {
+      "path": "../logger"
+    },
+    {
+      "path": "../edgar"
+    },
+    {
+      "path": "../marketdata"
+    }
+  ]
+}

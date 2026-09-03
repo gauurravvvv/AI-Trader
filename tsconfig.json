@@ -1,12 +1,50 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/config" },
-    { "path": "./packages/db" },
-    { "path": "./packages/claude" },
-    { "path": "./packages/budget" },
-    { "path": "./packages/logger" },
-    { "path": "./packages/agents" },
-    { "path": "./apps/daemon" }
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/claude"
+    },
+    {
+      "path": "./packages/budget"
+    },
+    {
+      "path": "./packages/logger"
+    },
+    {
+      "path": "./packages/agents"
+    },
+    {
+      "path": "./apps/daemon"
+    },
+    {
+      "path": "./packages/brokers"
+    },
+    {
+      "path": "./packages/marketdata"
+    },
+    {
+      "path": "./packages/ledger"
+    },
+    {
+      "path": "./packages/risk"
+    },
+    {
+      "path": "./packages/edgar"
+    },
+    {
+      "path": "./packages/alpha"
+    },
+    {
+      "path": "./packages/pipeline"
+    },
+    {
+      "path": "./packages/dashboard"
+    }
   ]
 }
