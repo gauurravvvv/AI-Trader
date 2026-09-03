@@ -1,5 +1,16 @@
 # 01 — Requirements Specification
 
+> ### ⚠️ Partially superseded — 2026-09-03
+> The authoritative design is now **[`docs/superpowers/specs/2026-09-03-aegis-design.md`](superpowers/specs/2026-09-03-aegis-design.md)**.
+>
+> **What changed:** the runtime is the local **`claude -p` CLI**, not the Anthropic API with a key
+> (and it is metered — $100/mo credit pool, not $300/mo of API spend); storage is **SQLite**, not
+> Postgres+Redis; the agent roster is **rules-first with 5 model-using agents**, not 12 LLM calls per
+> cycle; the primary strategy is **text-based post-earnings drift**, not generic multi-dimension
+> scoring; market order is **US → Crypto → India**.
+>
+> **What still holds, and is not repeated in the spec:** the eight hard invariants (§ 3), the functional requirements for notification, dashboard and evaluation (§ 5.6–5.8), the `BrokerAdapter` abstraction and the India/SEBI reasoning (§ 6), the fill and slippage model (§ 9.4), security and compliance (§ 10), and the acceptance criteria (§ 11).
+
 **Project:** Aegis — multi-agent, real-time, paper-trading research platform
 **Date:** 2026-09-03
 **Status:** Draft for approval

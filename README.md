@@ -28,6 +28,7 @@ trade action; live TradingView charts.
 | [`docs/01-REQUIREMENTS.md`](docs/01-REQUIREMENTS.md) | Scope, hard invariants, functional/non-functional requirements, venues, data model, key decisions, acceptance criteria |
 | [`docs/02-AGENT-ARCHITECTURE.md`](docs/02-AGENT-ARCHITECTURE.md) | **How every agent works** — research → planning → execution → monitoring, with contracts, rubrics, and failure modes |
 | [`docs/03-ROADMAP.md`](docs/03-ROADMAP.md) | Ten phases, gates, estimates, and the risk register |
+| **[`docs/superpowers/specs/2026-09-03-aegis-design.md`](docs/superpowers/specs/2026-09-03-aegis-design.md)** | **Current authoritative design** — Claude Code CLI runtime, metered budget, the post-earnings-drift alpha engine, 16-agent roster. Supersedes parts of 01–03. |
 | [`docs/superpowers/plans/2026-09-03-phase-0-1-foundation-and-broker-spine.md`](docs/superpowers/plans/2026-09-03-phase-0-1-foundation-and-broker-spine.md) | Task-by-task TDD plan for Phases 0–1, ready to execute |
 
 A shareable visual overview lives at [`docs/assets/architecture-overview.html`](docs/assets/architecture-overview.html), published at <https://claude.ai/code/artifact/1fd620b5-182c-4d01-8798-e7df66909cfd> (private until you share it).

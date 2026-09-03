@@ -1,5 +1,16 @@
 # 03 — Execution Roadmap
 
+> ### ⚠️ Partially superseded — 2026-09-03
+> The authoritative design is now **[`docs/superpowers/specs/2026-09-03-aegis-design.md`](superpowers/specs/2026-09-03-aegis-design.md)**.
+>
+> **What changed:** the runtime is the local **`claude -p` CLI**, not the Anthropic API with a key
+> (and it is metered — $100/mo credit pool, not $300/mo of API spend); storage is **SQLite**, not
+> Postgres+Redis; the agent roster is **rules-first with 5 model-using agents**, not 12 LLM calls per
+> cycle; the primary strategy is **text-based post-earnings drift**, not generic multi-dimension
+> scoring; market order is **US → Crypto → India**.
+>
+> **What still holds, and is not repeated in the spec:** the risk register and the gate-per-phase discipline. The phase list itself is replaced by § 10 of the spec.
+
 From an empty repo to a measured verdict. Companion to
 [01-REQUIREMENTS.md](01-REQUIREMENTS.md) and [02-AGENT-ARCHITECTURE.md](02-AGENT-ARCHITECTURE.md).
 
