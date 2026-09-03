@@ -41,6 +41,9 @@ importers:
       '@aegis/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@aegis/dashboard':
+        specifier: workspace:*
+        version: link:../../packages/dashboard
       '@aegis/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -130,6 +133,15 @@ importers:
         version: 3.25.76
 
   packages/config: {}
+
+  packages/dashboard:
+    dependencies:
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aegis/risk':
+        specifier: workspace:*
+        version: link:../risk
 
   packages/db:
     dependencies:

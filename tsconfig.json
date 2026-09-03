@@ -42,6 +42,9 @@
     },
     {
       "path": "./packages/pipeline"
+    },
+    {
+      "path": "./packages/dashboard"
     }
   ]
 }

@@ -18,6 +18,7 @@
     "@aegis/risk": "workspace:*",
     "@aegis/edgar": "workspace:*",
     "@aegis/pipeline": "workspace:*",
-    "@aegis/alpha": "workspace:*"
+    "@aegis/alpha": "workspace:*",
+    "@aegis/dashboard": "workspace:*"
   }
 }

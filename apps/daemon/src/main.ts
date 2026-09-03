@@ -9,6 +9,7 @@ import { YahooPriceSource, YahooConsensus } from '@aegis/marketdata';
 import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
 import { EdgarClient } from '@aegis/edgar';
+import { Dashboard } from '@aegis/dashboard';
 import {
   EdgarPollerAgent,
   EarningsReaderAgent,
@@ -87,7 +88,22 @@ const orchestrator = new Orchestrator(log);
 orchestrator.register(new EdgarPollerAgent(pipelineDeps), 0);
 orchestrator.register(new EarningsReaderAgent(pipelineDeps), 10_000);
 
+const dashboard = new Dashboard({
+  db,
+  port: cfg.dashboardPort,
+  monthlyBudgetUsd: cfg.monthlyBudgetUsd,
+  autonomy,
+  venue: adapter.venue,
+  onHaltChange: (h) => {
+    log.warn('dashboard', h ? 'KILL SWITCH ENGAGED from the dashboard' : 'halt cleared');
+  },
+});
+dashboard.start();
+
 const HEARTBEAT_MS = 5 * 60 * 1000;
+// The dashboard polls its own snapshot; this pushes so an idle browser still
+// reflects a fill that happened while nobody was looking.
+const DASH_PUSH_MS = 3000;
 
 log.ok('daemon', `aegis up · mode=${cfg.tradingMode} · autonomy=${autonomy} · db=${cfg.dbPath}`);
 log.event(
@@ -104,6 +120,11 @@ if (autonomy === 'SHADOW') {
 }
 
 orchestrator.start();
+log.ok('dashboard', `http://localhost:${String(cfg.dashboardPort)}`);
+
+const dashTimer = setInterval(() => {
+  dashboard.broadcast('tick', dashboard.snapshot());
+}, DASH_PUSH_MS);
 
 const reportBudget = (): void => {
   log.budget(budget.spent(), cfg.monthlyBudgetUsd, new Date().getDate());
@@ -120,6 +141,8 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     shuttingDown = true;
     log.warn('daemon', `${sig} received — stopping agents`);
     stopHeartbeat();
+    clearInterval(dashTimer);
+    dashboard.stop();
     stopReconciler();
     router.stop();
     orchestrator.stop();
