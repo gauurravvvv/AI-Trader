@@ -1,3 +1,4 @@
+# ── Our own build output ──────────────────────────────────────────
 node_modules/
 .next/
 dist/
@@ -5,15 +6,30 @@ build/
 out/
 coverage/
 *.log
-.DS_Store
-.env
-.env.*
-!.env.example
 __pycache__/
 *.pyc
 .venv/
 venv/
-# Generated artifacts
-output/
-*.pdf
-!docs/**/*.pdf
+
+# ── Secrets — never commit ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.sample.env
+
+# ── Generated trading artifacts (see docs/01-REQUIREMENTS.md) ─────
+/output/
+/TRADE-*.md
+/TRADE-*.pdf
+
+# ── OS junk ───────────────────────────────────────────────────────
+.DS_Store
+
+# ── reference/ holds faithful upstream copies. Our rules above must
+#    not strip their content; each vendored repo's own .gitignore
+#    still applies, which is what keeps the copy true to upstream.
+!reference/**/*.pdf
+!reference/**/*.env.example
+!reference/**/.env.*.example
+!reference/**/.sample.env

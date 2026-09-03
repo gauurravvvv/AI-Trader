@@ -1,12 +1,22 @@
-# AI-Trader — single source of truth
+# AI-Trader
 
-Workspace for **Aegis**: a multi-agent, real-time, **paper-money** trading research
-platform covering US equities, Indian equities, and crypto — with email alerts on
-every trade action and live TradingView charts.
+**Aegis** — a multi-agent, real-time, **paper-money** trading research platform for
+US equities, Indian equities, and crypto. Claude agents research each name, argue
+it from both sides, audit their own reasoning, plan a staged entry, clear a
+deterministic risk gate, and place orders against paper accounts. Email on every
+trade action; live TradingView charts.
 
-> **Paper money only.** There is no code path to a funded account, and that is
-> enforced architecturally, not by convention. See INV-1 in the requirements.
-> Educational and research use. Not financial advice.
+> ### Paper money only
+> There is no code path to a funded account, and that is enforced
+> architecturally rather than by convention — a frozen endpoint allowlist, a
+> boot-time assertion, and a test that fails the build if a live broker hostname
+> appears anywhere in source (INV-1).
+>
+> This is **educational and research software**. It is **not financial advice**,
+> it does not manage money, and nothing here should be read as a claim that these
+> agents are profitable. See [what this can and cannot promise](#what-this-can-and-cannot-promise).
+
+**Status:** planning complete, no application code yet. Phase 0 is next.
 
 ---
 
@@ -28,6 +38,7 @@ A shareable visual overview lives at [`docs/assets/architecture-overview.html`](
 
 ```
 AI-Trader/
+├── README.md  LICENSE  NOTICE.md
 ├── docs/                      the plan (read these first)
 │   └── superpowers/plans/     executable task-by-task implementation plans
 ├── reference/                 vendored OSS, read-only — see reference/MANIFEST.md
@@ -81,15 +92,52 @@ a mediocre entry; one that hallucinates a position limit costs you the account.
 
 ---
 
-## Status
+## Venues — all paper, all behind one adapter
 
-Planning complete. No application code yet — Phase 0 is the next step.
+| Market | Venue | Ships | Why |
+|---|---|---|---|
+| Crypto | Binance Spot Testnet | 1st | Open 24/7, so the real-time loop can be debugged at 11pm on a Sunday rather than waiting for Monday's open |
+| US equities | Alpaca Paper | 2nd | Free, real-time, global signup. Free tier serves IEX rather than consolidated prices, so US fills carry an extra slippage penalty |
+| India | In-house simulator | 3rd | No Indian broker offers a real paper sandbox, and SEBI's algo framework has required static-IP whitelisting, a registered strategy ID and exchange empanelment since 2026-04-01. Simulating keeps the regulatory surface at zero; the adapter interface keeps a real broker a drop-in later |
 
-**Venues (all paper):** Binance Spot Testnet (crypto, ships first — 24/7 means you
-can debug the real-time loop at 11pm on a Sunday) · Alpaca Paper (US) · in-house
-simulator (India — chosen because SEBI's algo framework, fully in force since
-2026-04-01, makes a real Indian broker adapter a compliance project rather than an
-integration; the adapter interface keeps it a drop-in later).
+All three implement the same `BrokerAdapter` and pass the same conformance suite,
+so agent code never knows which venue it is talking to.
 
-**Open questions** that change the work are listed in
-[requirements § 12](docs/01-REQUIREMENTS.md) with defaults already in effect.
+---
+
+## What this can and cannot promise
+
+No design guarantees profit, and one that assumes it is the design that loses
+money. Three things are built into the requirements rather than bolted on as
+disclaimers:
+
+- **There is no published evidence that LLM agents have an edge in liquid
+  markets.** Every framework this draws from — including the two most-starred on
+  GitHub — ships research-only with no audited track record.
+- **Paper trading flatters you.** No queue position, no market impact, and on the
+  free US tier, single-exchange prices. Slippage and costs are modelled explicitly
+  on all three venues so the gap stays visible.
+- **The v1 deliverable is a verdict, not a bankroll.** Does the pipeline beat
+  buy-and-hold after modelled costs, with enough closed trades to believe it? If
+  the honest answer is no, that is a successful experiment run in paper money.
+
+---
+
+## Licensing
+
+Original work here — `docs/`, `scripts/`, `README.md`, and any application code —
+is **MIT** ([LICENSE](LICENSE)).
+
+Everything under `reference/` is an unmodified third-party copy under its own
+upstream licence, including one that is **AGPL-3.0** (`reference/openalgo/`). None
+of it is imported, linked, or compiled into the original work; the relationship is
+mere aggregation. Full breakdown and the AGPL handling rule: [NOTICE.md](NOTICE.md).
+
+---
+
+## Open questions
+
+Seven decisions that change the work — starting capital, risk budget, universe,
+holding horizon, LLM budget, email target, deploy target — are listed in
+[requirements § 12](docs/01-REQUIREMENTS.md), each with a working default already
+in effect, so nothing is blocked on them.
