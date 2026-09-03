@@ -5,9 +5,9 @@
 
 ---
 
-## A. Local sources (already in this workspace)
+## A. Prompt toolkits (`reference/`)
 
-### A1. `ai-trading-claude/` — AI Trading Analyst (MIT, Zubair Trabzada)
+### A1. `reference/ai-trading-claude/` — AI Trading Analyst (MIT, Zubair Trabzada)
 
 16 markdown skills + 5 agent specs + one ReportLab PDF script. No runtime, no broker, no keys.
 
@@ -24,7 +24,7 @@
 
 **What we deliberately do NOT take:** the toolkit fabricates nothing but also *verifies* nothing — no backtest, no ground truth, no P&L. Its scores have never been scored. We keep the rubric shape and add measurement.
 
-### A2. `InvestSkill/` — 26 analysis frameworks (MIT, yennanliu), v1.11.0
+### A2. `reference/InvestSkill/` — 26 analysis frameworks (MIT, yennanliu), v1.11.0
 
 27 skill dirs, dual-published as `plugins/us-stock-analysis/skills/<n>/SKILL.md` (with frontmatter) and `prompts/<n>.md` (portable). Node ≥18, extensive CI. Far more rigorous than A1.
 
@@ -69,7 +69,7 @@
 
 ---
 
-## B. Open-source landscape (web research, 2026-09-03)
+## B. Codebases (`reference/`) — the open-source landscape
 
 | Project | License | What it proves | What we borrow |
 |---|---|---|---|

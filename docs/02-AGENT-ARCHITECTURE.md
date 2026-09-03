@@ -185,7 +185,7 @@ uses these as candidate ladder rungs.
 **Replaced by the On-chain analyst for crypto.**
 
 Sub-dimensions: Valuation · Growth · Profitability · Financial Health · Moat.
-Bandings adopted from `ai-trading-claude/agents/trade-fundamental.md` cross-checked
+Bandings adopted from `reference/ai-trading-claude/agents/trade-fundamental.md` cross-checked
 against InvestSkill's `stock-eval` (Piotroski F-Score, ROIC vs WACC, DuPont).
 
 **Market-specific:** Indian symbols use INR-native metrics and Indian disclosure
@@ -206,7 +206,7 @@ Institutional flow · Insider/short signals.
 
 **Contrarian flags are mandatory** — extreme euphoria is a top signal, extreme
 fear a bottom signal. The agent must emit `contrarianFlags[]` when unanimity is
-detected. This is lifted from `ai-trading-claude/agents/trade-sentiment.md`, which
+detected. This is lifted from `reference/ai-trading-claude/agents/trade-sentiment.md`, which
 handles it better than any other source we read.
 
 #### 1.2.5 News / Catalyst Analyst — folded into the 20% sentiment weight

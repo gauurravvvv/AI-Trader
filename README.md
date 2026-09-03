@@ -34,16 +34,19 @@ AI-Trader/
 │   ├── TradingAgents/         Apache-2.0 · agent topology, debate control flow, reflection loop
 │   ├── ai-hedge-fund/         MIT · investor-persona agents
 │   ├── openalgo/              AGPL-3.0 ⚠️ NEVER LINKED · Indian broker landscape
-│   └── AgenticTrading/        OpenMDW-1.0 · evaluation discipline
-├── ai-trading-claude/         MIT · 16 Claude skills, 5 agent specs (prompt-only)
-├── InvestSkill/               MIT · 26 analysis frameworks v1.11.0 (prompt-only)
+│   ├── AgenticTrading/        OpenMDW-1.0 · evaluation discipline
+│   ├── InvestSkill/           MIT · 26 analysis frameworks v1.11.0 (prompt-only)
+│   └── ai-trading-claude/     MIT · 16 Claude skills, 5 agent specs (prompt-only)
 └── scripts/
-    └── sync-reference.sh      reproducible re-clone of reference/ at pinned SHAs
+    └── sync-reference.sh      reproducible re-clone of all six at pinned SHAs
 ```
 
-Nothing under `reference/` is imported, linked, or compiled into the application.
-`openalgo` is AGPL-3.0 — it may be *run* as a separate self-hosted HTTP service,
-never linked. Details and pinned SHAs: [`reference/MANIFEST.md`](reference/MANIFEST.md).
+All six live under `reference/` with their `.git` stripped, so this workspace is a
+single self-contained tree — provenance is the pinned SHA in the manifest, and
+`scripts/sync-reference.sh` re-clones from it. Nothing under `reference/` is
+imported, linked, or compiled into the application. `openalgo` is AGPL-3.0 — it may
+be *run* as a separate self-hosted HTTP service, never linked. Details and pinned
+SHAs: [`reference/MANIFEST.md`](reference/MANIFEST.md).
 
 ---
 
