@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod';
 
 export type ParseStage = 'direct' | 'fence' | 'extract' | 'schema';
 export type ParseResult<T> =
@@ -11,7 +11,14 @@ export type ParseResult<T> =
  * extraction attempts, then schema validation. Returns a result rather than
  * throwing, so a caller records a dataGap instead of crashing an agent tick.
  */
-export function parseModelJson<T>(raw: string, schema: ZodType<T>): ParseResult<T> {
+export function parseModelJson<T>(
+  raw: string,
+  // Input is `unknown` so schemas using .default()/.transform() — where the
+  // input and output types differ — bind to the OUTPUT type. Without this,
+  // TypeScript infers T from the input side and every defaulted field comes
+  // back optional.
+  schema: ZodType<T, ZodTypeDef, unknown>,
+): ParseResult<T> {
   const candidates: string[] = [raw.trim()];
 
   const fence = /```(?:json)?\s*\n?([\s\S]*?)```/.exec(raw);

@@ -57,6 +57,30 @@ importers:
         specifier: workspace:*
         version: link:../logger
 
+  packages/alpha:
+    dependencies:
+      '@aegis/budget':
+        specifier: workspace:*
+        version: link:../budget
+      '@aegis/claude':
+        specifier: workspace:*
+        version: link:../claude
+      '@aegis/edgar':
+        specifier: workspace:*
+        version: link:../edgar
+      '@aegis/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@aegis/marketdata':
+        specifier: workspace:*
+        version: link:../marketdata
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+
   packages/brokers:
     dependencies:
       '@aegis/config':
@@ -95,6 +119,8 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.11
         version: 7.6.13
+
+  packages/edgar: {}
 
   packages/ledger:
     dependencies:

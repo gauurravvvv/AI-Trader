@@ -33,6 +33,12 @@
     },
     {
       "path": "./packages/risk"
+    },
+    {
+      "path": "./packages/edgar"
+    },
+    {
+      "path": "./packages/alpha"
     }
   ]
 }
