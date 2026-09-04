@@ -1,0 +1,97 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - navigation [ref=f2e3]:
+      - generic [ref=f2e4]:
+        - generic [ref=f2e5]: Æ
+        - generic [ref=f2e6]: Aegis
+      - generic [ref=f2e7]: Trading
+      - generic "Overview" [ref=f2e8] [cursor=pointer]: ◱
+      - generic "Decisions" [ref=f2e11] [cursor=pointer]: ⚖
+      - generic "Execution" [ref=f2e14] [cursor=pointer]: ⇄
+      - generic [ref=f2e17]: Thinking
+      - generic "Research" [ref=f2e18] [cursor=pointer]:
+        - generic [ref=f2e19]: ◎
+        - generic [ref=f2e21]: "6"
+      - generic "Agents" [ref=f2e22] [cursor=pointer]:
+        - generic [ref=f2e23]: ⚙
+        - generic [ref=f2e25]: "6"
+      - generic [ref=f2e26]: Operations
+      - generic "Money" [ref=f2e27] [cursor=pointer]:
+        - generic [ref=f2e28]: ▤
+        - generic [ref=f2e30]: $0.0283
+      - generic "Market" [ref=f2e31] [cursor=pointer]: ◈
+      - button "⟨ Collapse" [expanded] [ref=f2e35] [cursor=pointer]:
+        - generic [ref=f2e36]: ⟨
+        - generic [ref=f2e37]: Collapse
+    - generic [ref=f2e38]:
+      - banner [ref=f2e39]:
+        - generic [ref=f2e40]: Paper money only
+        - generic [ref=f2e41]: AUTO
+        - generic [ref=f2e42]: sim-us
+        - button "◐ System" [ref=f2e43] [cursor=pointer]
+        - button "Kill switch" [ref=f2e44] [cursor=pointer]
+      - generic [ref=f2e45]: AUTO — placing simulated orders. Paper money only; there is no path to a funded account.
+      - main [ref=f2e46]:
+        - generic [ref=f2e47]:
+          - heading "Overview" [level=2] [ref=f2e48]
+          - paragraph [ref=f2e49]: Money, exposure and what the system is doing right now.
+          - generic [ref=f2e50]:
+            - generic [ref=f2e51]:
+              - text: Total equity
+              - generic [ref=f2e52]: $100,000
+              - generic [ref=f2e53]: cash + positions
+            - generic [ref=f2e54]:
+              - text: Available cash
+              - generic [ref=f2e55]: $100,000
+              - generic [ref=f2e56]: free to deploy
+            - generic [ref=f2e57]:
+              - text: Invested
+              - generic [ref=f2e58]: $0
+              - generic [ref=f2e59]: 0.0% of equity deployed
+            - generic [ref=f2e60]:
+              - text: Realised P&L
+              - generic [ref=f2e61]: $0
+              - generic [ref=f2e62]: closed trades
+            - generic [ref=f2e63]:
+              - text: Open positions
+              - generic [ref=f2e64]: "0"
+              - generic [ref=f2e65]: $0 long · $0 short
+            - generic [ref=f2e66]:
+              - text: Model spend
+              - generic [ref=f2e67]: $0.0283
+              - generic [ref=f2e68]: of $100 · tier NORMAL
+          - generic [ref=f2e69]:
+            - generic [ref=f2e70]:
+              - heading "Realised equity" [level=2] [ref=f2e71]
+              - img "Realised profit and loss over time, with drawdown shaded and each fill marked" [ref=f2e73]:
+                - generic [ref=f2e74]: No fills yet — the curve starts at the first one.
+              - paragraph [ref=f2e75]: Realised only. Marking open positions to market would move the line when nothing was decided — this shows what the decisions did, not what the market did to them while they were held.
+            - generic [ref=f2e76]:
+              - heading "Performance" [level=2] [ref=f2e77]
+              - generic [ref=f2e78]:
+                - generic [ref=f2e79]:
+                  - generic [ref=f2e80]: Closed
+                  - text: "0"
+                - generic [ref=f2e81]:
+                  - generic [ref=f2e82]: Win rate
+                  - text: —
+                - generic [ref=f2e83]:
+                  - generic [ref=f2e84]: Realised
+                  - text: "0.00"
+                - generic [ref=f2e85]:
+                  - generic [ref=f2e86]: Max DD
+                  - text: "0.00"
+              - paragraph [ref=f2e87]: Nothing has closed yet.
+            - generic [ref=f2e88]:
+              - heading "Positions" [level=2] [ref=f2e89]
+              - table [ref=f2e91]:
+                - rowgroup [ref=f2e92]:
+                  - row [ref=f2e93]:
+                    - columnheader "Symbol" [ref=f2e94]
+                    - columnheader "Qty" [ref=f2e95]
+                    - columnheader "Avg cost" [ref=f2e96]
+                    - columnheader "Realised" [ref=f2e97]
+                - rowgroup [ref=f2e98]:
+                  - row [ref=f2e99]:
+                    - cell "nothing yet" [ref=f2e100]
+  - contentinfo [ref=f2e101]: Paper trading only. Educational and research use — not financial advice. Venue fills are simulated with spread, slippage and full cost modelling.

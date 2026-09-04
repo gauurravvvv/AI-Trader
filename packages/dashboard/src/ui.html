@@ -57,20 +57,58 @@
   .muted{color:var(--ink3)}
   .pos{color:var(--ok)} .neg{color:var(--flag)} .warnc{color:var(--warn)}
 
-  /* Sidebar layout. Grid rather than fixed positioning so the main column
-     scrolls independently and the nav never covers content on a short window. */
-  .shell{display:grid;grid-template-columns:206px 1fr;min-height:calc(100vh - 58px)}
-  nav.side{border-right:1px solid var(--rule);background:var(--bar);padding:.8rem .5rem;
-    position:sticky;top:58px;align-self:start;max-height:calc(100vh - 58px);overflow-y:auto}
-  nav.side a{display:flex;justify-content:space-between;align-items:center;gap:.5rem;
-    padding:.44rem .6rem;border-radius:4px;color:var(--ink2);text-decoration:none;
-    font-size:.86rem;margin-bottom:1px;cursor:pointer}
+  /* App shell. The sidebar owns the full viewport height and the content
+     column scrolls independently beside it, so the nav is always reachable
+     without scrolling back to the top. */
+  /* The width snaps rather than glides, deliberately.
+     `transition: grid-template-columns` did nothing at all — an unregistered
+     custom property is an untyped token with nothing to interpolate, so the
+     attribute flipped, the labels hid, and the rail stayed 208px wide.
+     Registering --sw with @property fixed that but produced a transition that
+     sat still for 400ms and then took over a second to finish. An instant
+     toggle has no failure mode and is what most shells do anyway. */
+  :root{--sw:208px}
+  :root[data-nav=collapsed]{--sw:58px}
+  .app{display:grid;grid-template-columns:var(--sw) 1fr;height:100vh;overflow:hidden}
+  .col{display:flex;flex-direction:column;height:100vh;overflow-y:auto;min-width:0}
+
+  nav.side{height:100vh;overflow-y:auto;overflow-x:hidden;background:var(--bar);
+    border-right:1px solid var(--rule);padding:.6rem .5rem 1rem;display:flex;
+    flex-direction:column;gap:1px}
+  nav.side .brand{display:flex;align-items:center;gap:.55rem;padding:.35rem .5rem .8rem;
+    font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+  nav.side .brand .mark{flex:0 0 auto;width:22px;height:22px;border-radius:5px;
+    background:var(--accent);color:var(--paper);display:grid;place-items:center;
+    font-size:.72rem;font-weight:700}
+  nav.side a{display:flex;align-items:center;gap:.6rem;padding:.46rem .5rem;border-radius:5px;
+    color:var(--ink2);text-decoration:none;font-size:.86rem;cursor:pointer;white-space:nowrap}
   nav.side a:hover{background:var(--sunk);color:var(--ink)}
   nav.side a.on{background:var(--paper);color:var(--ink);font-weight:600;
     box-shadow:inset 2px 0 0 var(--accent)}
+  nav.side a .ico{flex:0 0 auto;width:18px;text-align:center;font-size:.95rem;opacity:.85}
+  nav.side a .label{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
   nav.side .grp{font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--ink3);padding:.9rem .6rem .3rem}
-  nav.side .cnt{font-size:.72rem;color:var(--ink3);font-variant-numeric:tabular-nums}
+    color:var(--ink3);padding:.85rem .5rem .28rem;white-space:nowrap}
+  nav.side .cnt{font-size:.72rem;color:var(--ink3);font-variant-numeric:tabular-nums;
+    flex:0 0 auto}
+  nav.side .fill{flex:1 1 auto}
+  #navtoggle{width:100%;justify-content:flex-start;background:none;border:1px solid var(--rule);
+    color:var(--ink2);border-radius:5px;padding:.4rem .5rem;font-size:.8rem;cursor:pointer;
+    display:flex;align-items:center;gap:.6rem}
+  #navtoggle:hover{background:var(--sunk);color:var(--ink)}
+
+  /* Collapsed: icons only. Labels are hidden rather than removed so the
+     accessible name and the tooltip both survive. */
+  :root[data-nav=collapsed] nav.side .label,
+  :root[data-nav=collapsed] nav.side .cnt,
+  :root[data-nav=collapsed] nav.side .grp,
+  :root[data-nav=collapsed] nav.side .brand span:not(.mark){
+    position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  :root[data-nav=collapsed] nav.side a{justify-content:center;padding:.5rem 0}
+  :root[data-nav=collapsed] nav.side .grp{padding:.4rem 0 0;height:.6rem}
+  :root[data-nav=collapsed] nav.side .brand{justify-content:center;padding:.35rem 0 .8rem}
+  :root[data-nav=collapsed] #navtoggle{justify-content:center}
+
   main{padding:1rem 1.25rem;min-width:0}
   .page{display:none} .page.on{display:block}
   .page > h2:first-child{margin-top:0}
@@ -81,12 +119,15 @@
     margin-top:.15rem}
   .card span{font-size:.72rem;color:var(--ink3);letter-spacing:.03em;text-transform:uppercase}
   .card small{display:block;font-size:.72rem;color:var(--ink3);margin-top:.2rem}
+
   @media (max-width:800px){
-    .shell{grid-template-columns:1fr}
-    nav.side{position:static;max-height:none;display:flex;flex-wrap:wrap;gap:.25rem;
-      border-right:0;border-bottom:1px solid var(--rule)}
-    nav.side .grp{display:none}
-    nav.side a{margin:0}
+    /* Below this the sidebar is always the collapsed rail: a 208px nav on a
+       phone leaves no room for a table. */
+    .app{grid-template-columns:58px 1fr}
+    nav.side .label,nav.side .cnt,nav.side .grp{position:absolute;width:1px;height:1px;
+      overflow:hidden;clip:rect(0 0 0 0)}
+    nav.side a{justify-content:center;padding:.5rem 0}
+    #navtoggle{display:none}
   }
   .notice{margin:0;padding:.7rem 1.25rem;border-bottom:1px solid var(--rule2);
     background:var(--sunk);color:var(--ink2);font-size:.84rem}
@@ -107,8 +148,30 @@
 </style>
 </head>
 <body>
+<div class="app">
+<nav class="side" id="nav">
+  <div class="brand"><span class="mark">Æ</span><span>Aegis</span></div>
+
+  <div class="grp">Trading</div>
+  <a data-page="overview" class="on" title="Overview"><span class="ico">◱</span><span class="label">Overview</span></a>
+  <a data-page="decisions" title="Decisions"><span class="ico">⚖</span><span class="label">Decisions</span><span class="cnt" id="n-decisions"></span></a>
+  <a data-page="execution" title="Execution"><span class="ico">⇄</span><span class="label">Execution</span><span class="cnt" id="n-orders"></span></a>
+
+  <div class="grp">Thinking</div>
+  <a data-page="research" title="Research"><span class="ico">◎</span><span class="label">Research</span><span class="cnt" id="n-news"></span></a>
+  <a data-page="agents" title="Agents"><span class="ico">⚙</span><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
+
+  <div class="grp">Operations</div>
+  <a data-page="money" title="Money"><span class="ico">▤</span><span class="label">Money</span><span class="cnt" id="n-spend"></span></a>
+  <a data-page="market" title="Market"><span class="ico">◈</span><span class="label">Market</span></a>
+
+  <div class="fill"></div>
+  <button id="navtoggle" title="Collapse or expand the sidebar" aria-expanded="true">
+    <span class="ico" id="navtoggleico">⟨</span><span class="label">Collapse</span>
+  </button>
+</nav>
+<div class="col">
 <header>
-  <h1>Aegis</h1>
   <span class="tag paper">Paper money only</span>
   <span class="tag" id="autonomy">—</span>
   <span class="tag" id="venue">—</span>
@@ -117,22 +180,7 @@
   <button id="theme" title="Light / dark / follow the system">◐ Theme</button>
   <button id="halt" title="Stop all new orders immediately. Exits and stops keep working.">Kill switch</button>
 </header>
-
 <div id="modebar" class="notice" hidden></div>
-
-<div class="shell">
-<nav class="side" id="nav">
-  <div class="grp">Trading</div>
-  <a data-page="overview" class="on">Overview</a>
-  <a data-page="decisions">Decisions <span class="cnt" id="n-decisions"></span></a>
-  <a data-page="execution">Execution <span class="cnt" id="n-orders"></span></a>
-  <div class="grp">Thinking</div>
-  <a data-page="research">Research <span class="cnt" id="n-news"></span></a>
-  <a data-page="agents">Agents <span class="cnt" id="n-signals"></span></a>
-  <div class="grp">Operations</div>
-  <a data-page="money">Money <span class="cnt" id="n-spend"></span></a>
-  <a data-page="market">Market</a>
-</nav>
 <main>
   <section class="page" id="page-overview">
     <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Overview</h2>
@@ -326,6 +374,7 @@
   </section>
 </main>
 </div>
+</div>
 
 <footer>
   Paper trading only. Educational and research use — not financial advice.
@@ -445,6 +494,35 @@ initTheme();
  * the payload arrives whole and hiding a section costs nothing, whereas
  * re-fetching per page would multiply the polling.
  */
+/**
+ * Sidebar collapse, persisted.
+ *
+ * Collapsed hides the labels rather than removing them, so the accessible name
+ * and the title tooltip both survive and an icon rail is still navigable by
+ * screen reader. Below 800px the CSS forces the rail regardless — a 208px nav
+ * on a phone leaves no room for a table — and the toggle is hidden there
+ * because there is nothing useful for it to do.
+ */
+function applyNav(collapsed) {
+  const root = document.documentElement;
+  if (collapsed) root.setAttribute('data-nav', 'collapsed');
+  else root.removeAttribute('data-nav');
+  const btn = $('navtoggle');
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  btn.title = collapsed ? 'Expand the sidebar' : 'Collapse the sidebar';
+  $('navtoggleico').textContent = collapsed ? '⟩' : '⟨';
+  btn.querySelector('.label').textContent = collapsed ? 'Expand' : 'Collapse';
+  try { localStorage.setItem('aegis-nav', collapsed ? 'collapsed' : 'open'); } catch { /* private mode */ }
+}
+(function initNav() {
+  let v = 'open';
+  try { v = localStorage.getItem('aegis-nav') || 'open'; } catch { /* ignore */ }
+  applyNav(v === 'collapsed');
+  $('navtoggle').addEventListener('click', () => {
+    applyNav(document.documentElement.getAttribute('data-nav') !== 'collapsed');
+  });
+})();
+
 const PAGES = ['overview', 'decisions', 'research', 'execution', 'money', 'agents', 'market'];
 function showPage(id) {
   const page = PAGES.includes(id) ? id : 'overview';
