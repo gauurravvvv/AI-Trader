@@ -5,7 +5,7 @@ import { BudgetGovernor } from '@aegis/budget';
 import { createLogger } from '@aegis/logger';
 import type { AskFn, ClaudeResult } from '@aegis/claude';
 import type { NewsItem, YahooNewsSource } from '@aegis/marketdata';
-import { NewsScoutAgent, SIG_NEWS, type NewsDeps } from './news.js';
+import { NewsScoutAgent, interleave, SIG_NEWS, type NewsDeps } from './news.js';
 import type { UniverseEntry } from './universe.js';
 
 const UNIVERSE: UniverseEntry[] = [
@@ -166,5 +166,59 @@ describe('NewsScoutAgent', () => {
     })).execute();
     expect(bus.read([SIG_NEWS], 10)).toHaveLength(0);
     expect(lines.join('\n')).toContain('triage failed');
+  });
+});
+
+describe('interleave', () => {
+  it('gives every symbol its first headline before any gets its second', () => {
+    expect(interleave([['a1', 'a2', 'a3'], ['b1'], ['c1', 'c2']], 10))
+      .toEqual(['a1', 'b1', 'c1', 'a2', 'c2', 'a3']);
+  });
+
+  it('stops at the cap', () => {
+    expect(interleave([['a1', 'a2'], ['b1', 'b2']], 3)).toEqual(['a1', 'b1', 'a2']);
+  });
+
+  it('handles an empty universe', () => {
+    expect(interleave([], 5)).toEqual([]);
+  });
+});
+
+describe('batch fairness across markets', () => {
+  it('does not let the heavily covered US names crowd out crypto and India', async () => {
+    // The first live run capped at 12 and never reached BTC: NVDA and AAPL,
+    // being the most written-about, consumed the entire batch.
+    const many = (sym: string): NewsItem[] =>
+      Array.from({ length: 20 }, (_, i) => story(sym, `${sym}${String(i)}`, `${sym} headline ${String(i)}`));
+    const ask = vi.fn(reply('{"items":[]}'));
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: many('NVDA'), BTC: many('BTC'), RELIANCE: many('RELIANCE') }),
+      ask,
+      batchCap: 6,
+    })).execute();
+    const prompt = ask.mock.calls[0]![0] as string;
+    expect(prompt).toContain('NVDA headline 0');
+    expect(prompt).toContain('BTC headline 0');
+    expect(prompt).toContain('RELIANCE headline 0');
+  });
+});
+
+describe('cap starvation', () => {
+  it('warns rather than silently ignoring the tail of the universe', async () => {
+    const one = (s: string): NewsItem[] => [story(s, `${s}1`, `${s} news`)];
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: one('NVDA'), BTC: one('BTC'), RELIANCE: one('RELIANCE') }),
+      ask: reply('{"items":[]}'),
+      batchCap: 2,
+    })).execute();
+    expect(lines.join('\n')).toContain('will not be looked at this tick');
+  });
+
+  it('stays quiet when the cap covers every symbol', async () => {
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: [story('NVDA', 'n1', 'x')] }),
+      ask: reply('{"items":[]}'),
+    })).execute();
+    expect(lines.join('\n')).not.toContain('will not be looked at');
   });
 });

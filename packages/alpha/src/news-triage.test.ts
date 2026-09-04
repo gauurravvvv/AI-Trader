@@ -3,7 +3,7 @@ import { openDb } from '@aegis/db';
 import { BudgetGovernor } from '@aegis/budget';
 import { createLogger } from '@aegis/logger';
 import type { AskFn, ClaudeResult } from '@aegis/claude';
-import { triageNews, buildBatch, dedupeByIndex, newsScore } from './news-triage.js';
+import { triageNews, buildBatch, dedupeByIndex, newsScore, normaliseCategory, parseItems } from './news-triage.js';
 
 const log = createLogger({ colour: false, sink: () => undefined });
 const budget = (): BudgetGovernor => new BudgetGovernor(openDb(':memory:'), 100, '2026-09-01');
@@ -105,5 +105,88 @@ describe('triageNews', () => {
     const calls = b as unknown as { db?: unknown };
     expect(calls).toBeDefined();
     if (!out.ok) expect(out.stage).toBe('call');
+  });
+});
+
+describe('normaliseCategory', () => {
+  it('accepts a category the enum already has', () => {
+    expect(normaliseCategory('GUIDANCE')).toEqual({ category: 'GUIDANCE', unknown: null });
+  });
+
+  it('maps the labels the model actually invented in the first live run', () => {
+    // Observed live: BUSINESS, COMPETITIVE and TRANSITION, which under a strict
+    // enum discarded all twelve ratings in the batch.
+    expect(normaliseCategory('BUSINESS').category).toBe('PRODUCT');
+    expect(normaliseCategory('COMPETITIVE').category).toBe('PRODUCT');
+    expect(normaliseCategory('TRANSITION').category).toBe('LEADERSHIP');
+  });
+
+  it('normalises case, spaces and hyphens', () => {
+    expect(normaliseCategory('price target').category).toBe('ANALYST');
+    expect(normaliseCategory('  Regulatory ').category).toBe('REGULATORY');
+  });
+
+  it('files anything else under OTHER and reports the label', () => {
+    expect(normaliseCategory('VIBES')).toEqual({ category: 'OTHER', unknown: 'VIBES' });
+  });
+
+  it('does not throw on a non-string', () => {
+    expect(normaliseCategory(42).category).toBe('OTHER');
+    expect(normaliseCategory(undefined).category).toBe('OTHER');
+  });
+});
+
+describe('parseItems', () => {
+  const good = { i: 0, materiality: 80, direction: 0.9, category: 'GUIDANCE', why: 'raise' };
+
+  it('keeps the good rows when one row is malformed', () => {
+    const out = parseItems([good, { i: 1, materiality: 'lots', direction: 0, category: 'NOISE' }]);
+    expect(out.items).toHaveLength(1);
+    expect(out.dropped).toBe(1);
+  });
+
+  it('rescues a row whose only fault was an invented category', () => {
+    const out = parseItems([{ ...good, category: 'BUSINESS' }]);
+    expect(out.items).toHaveLength(1);
+    expect(out.items[0]!.category).toBe('PRODUCT');
+    expect(out.dropped).toBe(0);
+  });
+
+  it('collects the unknown labels so the enum can be tuned from evidence', () => {
+    const out = parseItems([{ ...good, category: 'VIBES' }, { ...good, i: 1, category: 'MOMENTUM' }]);
+    expect(out.unknownCategories.sort()).toEqual(['MOMENTUM', 'VIBES']);
+  });
+
+  it('drops a row that is not an object at all', () => {
+    expect(parseItems(['nonsense', null, good]).items).toHaveLength(1);
+  });
+
+  it('defaults a missing why rather than failing the row', () => {
+    const out = parseItems([{ i: 0, materiality: 50, direction: 1, category: 'MA' }]);
+    expect(out.items[0]!.why).toBe('');
+  });
+
+  it('rejects an out-of-range score — that is a real error, not a label', () => {
+    expect(parseItems([{ ...good, materiality: 500 }]).items).toHaveLength(0);
+  });
+});
+
+describe('triageNews resilience', () => {
+  it('survives the reply shape that broke the first live run', async () => {
+    const out = await triageNews(['a', 'b', 'c'], {
+      budget: budget(), log,
+      ask: reply(JSON.stringify({
+        items: [
+          { i: 0, materiality: 70, direction: 0.6, category: 'GUIDANCE', why: 'raise' },
+          { i: 1, materiality: 40, direction: 0.2, category: 'BUSINESS', why: 'deal' },
+          { i: 2, materiality: 55, direction: -0.4, category: 'COMPETITIVE', why: 'share loss' },
+        ],
+      })),
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.items).toHaveLength(3);
+      expect(out.items.map((i) => i.category)).toEqual(['GUIDANCE', 'PRODUCT', 'PRODUCT']);
+    }
   });
 });

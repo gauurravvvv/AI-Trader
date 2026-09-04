@@ -21,5 +21,8 @@
     "@aegis/alpha": "workspace:*",
     "@aegis/dashboard": "workspace:*",
     "@aegis/notify": "workspace:*"
+  },
+  "scripts": {
+    "smoke:news": "tsx src/smoke-news.ts"
   }
 }

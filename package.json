@@ -2,12 +2,15 @@
   "name": "aegis",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
-    "dev": "node --import tsx apps/daemon/src/main.ts"
+    "dev": "node --import tsx apps/daemon/src/main.ts",
+    "smoke:news": "pnpm --filter @aegis/daemon smoke:news"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

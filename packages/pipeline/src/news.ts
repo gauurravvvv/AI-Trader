@@ -32,6 +32,23 @@ export interface ScoutedStory {
  * One model call per tick, not per headline. Triage over a batch is the whole
  * economic argument for doing it on haiku.
  */
+/**
+ * Take one item from each list in turn until the cap is reached, so a symbol
+ * with forty headlines cannot crowd out a symbol with one.
+ */
+export function interleave<T>(lists: T[][], cap: number): T[] {
+  const out: T[] = [];
+  const depth = Math.max(0, ...lists.map((l) => l.length));
+  for (let round = 0; round < depth && out.length < cap; round += 1) {
+    for (const list of lists) {
+      if (out.length >= cap) break;
+      const item = list[round];
+      if (item !== undefined) out.push(item);
+    }
+  }
+  return out;
+}
+
 export class NewsScoutAgent extends BaseAgent {
   constructor(private readonly n: NewsDeps) {
     super('news-scout', { intervalMs: 10 * 60 * 1000 }, n);
@@ -95,23 +112,40 @@ export class NewsScoutAgent extends BaseAgent {
     );
   }
 
-  /** New, recent, relevant headlines across the whole universe. */
+  /**
+   * New, recent, relevant headlines across the whole universe.
+   *
+   * Collected per symbol, then interleaved round-robin before the cap is
+   * applied. Draining each symbol in turn looked correct and was not: the US
+   * names come first in the universe and are the most heavily covered, so they
+   * consumed the entire batch every tick and crypto and India were never
+   * looked at. Round-robin gives every symbol its first headline before any
+   * symbol gets its second.
+   */
   private async gather(): Promise<NewsItem[]> {
     const cap = this.n.batchCap ?? 24;
     const maxAge = this.n.maxAgeHours ?? 36;
-    const out: NewsItem[] = [];
+
+    const perSymbol: NewsItem[][] = [];
     for (const entry of this.n.universe) {
-      if (out.length >= cap) break;
       const items = await this.n.news.headlines(entry.symbol, entry.market, 8);
       if (items.length === 0) {
         this.log.event(this.name, `${entry.symbol}: no attributable news`);
         continue;
       }
-      for (const it of newestFirst(withinHours(items, maxAge))) {
-        if (out.length >= cap) break;
-        if (this.n.news.isNew(it.id)) out.push(it);
-      }
+      const fresh = newestFirst(withinHours(items, maxAge)).filter((i) => this.n.news.isNew(i.id));
+      if (fresh.length > 0) perSymbol.push(fresh);
     }
-    return out;
+    // With the default cap every symbol gets a slot in the first round. Say so
+    // out loud when it does not, rather than silently never looking at the tail
+    // of the universe.
+    if (perSymbol.length > cap) {
+      this.log.warn(
+        this.name,
+        `${String(perSymbol.length)} symbols have fresh news but the batch cap is ${String(cap)} — ` +
+          `${String(perSymbol.length - cap)} will not be looked at this tick`,
+      );
+    }
+    return interleave(perSymbol, cap);
   }
 }
