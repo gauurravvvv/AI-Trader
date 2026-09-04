@@ -151,6 +151,9 @@ importers:
       '@aegis/risk':
         specifier: workspace:*
         version: link:../risk
+      decimal.js:
+        specifier: ^10.4.3
+        version: 10.6.0
 
   packages/db:
     dependencies:

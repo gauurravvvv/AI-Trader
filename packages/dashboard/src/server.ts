@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Db } from '@aegis/db';
 import { isHalted, setHalt } from '@aegis/risk';
 import { closedTrades, summarise } from '@aegis/pipeline';
+import { equityCurve } from './equity.js';
 
 export interface DashboardDeps {
   db: Db;
@@ -130,6 +131,7 @@ export class Dashboard {
         };
       }),
       performance: this.performance(),
+      equity: equityCurve(this.deps.db),
       llmCalls: q(
         `SELECT agent, model, tokens_in, tokens_out, cost_usd, latency_ms, ok, created_at
          FROM llm_calls ORDER BY id DESC LIMIT 30`,

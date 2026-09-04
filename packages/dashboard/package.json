@@ -10,6 +10,7 @@
   "dependencies": {
     "@aegis/db": "workspace:*",
     "@aegis/risk": "workspace:*",
-    "@aegis/pipeline": "workspace:*"
+    "@aegis/pipeline": "workspace:*",
+    "decimal.js": "^10.4.3"
   }
 }

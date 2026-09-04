@@ -90,6 +90,20 @@
     </table></div>
   </section>
 
+  <section class="wide">
+    <h2>Realised equity <span class="muted" id="eqnote"></span></h2>
+    <div id="eqwrap" style="overflow-x:auto">
+      <svg id="eq" viewBox="0 0 900 220" role="img"
+           aria-label="Realised profit and loss over time, with drawdown shaded and each fill marked"
+           style="width:100%;height:220px;display:block"></svg>
+    </div>
+    <p class="muted" style="margin:.5rem 0 0;font-size:.78rem">
+      Realised only. Marking open positions to market would move the line when nothing
+      was decided — this shows what the decisions did, not what the market did to them
+      while they were held.
+    </p>
+  </section>
+
   <section>
     <h2>Performance <span class="muted" id="perfnote"></span></h2>
     <div class="kv">
@@ -193,6 +207,70 @@ const rows = (el, data, fn, cols) => {
     : `<tr><td colspan="${cols}" class="empty">nothing yet</td></tr>`;
 };
 
+/**
+ * Equity curve, drawdown shading, and a dot per fill.
+ *
+ * Hand-drawn rather than pulled from a charting CDN: this is a line, a shaded
+ * region and some dots, and a runtime dependency that fails offline is a poor
+ * trade for it. Colours come from currentColor and the theme tokens so it works
+ * in both themes.
+ */
+function drawEquity(points) {
+  const svg = $('eq');
+  const W = 900, H = 220, PAD = { l: 52, r: 12, t: 14, b: 22 };
+  if (!points.length) {
+    svg.innerHTML = '<text x="450" y="110" text-anchor="middle" fill="currentColor" ' +
+      'opacity=".5" font-size="13">No fills yet — the curve starts at the first one.</text>';
+    $('eqnote').textContent = '';
+    return;
+  }
+
+  const ys = points.map((p) => p.equity);
+  let lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+  if (hi === lo) { hi = lo + 1; }
+  const padY = (hi - lo) * 0.1;
+  lo -= padY; hi += padY;
+
+  const iw = W - PAD.l - PAD.r, ih = H - PAD.t - PAD.b;
+  const X = (i) => PAD.l + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
+  const Y = (v) => PAD.t + ih - ((v - lo) / (hi - lo)) * ih;
+
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.equity).toFixed(1)}`).join('');
+  // Drawdown is the gap between the running peak and the curve.
+  let peak = -Infinity;
+  const peaks = points.map((p) => { peak = Math.max(peak, p.equity); return peak; });
+  const ddArea =
+    points.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(peaks[i]).toFixed(1)}`).join('') +
+    points.map((p, i) => `L${X(points.length - 1 - i).toFixed(1)},${Y(points[points.length - 1 - i].equity).toFixed(1)}`).join('') +
+    'Z';
+
+  const zeroY = Y(0).toFixed(1);
+  const dots = points.map((p, i) => {
+    const c = p.side === 'buy' ? 'var(--ok)' : 'var(--flag)';
+    return `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.equity).toFixed(1)}" r="2.6" fill="${c}">` +
+      `<title>${esc(p.side.toUpperCase())} ${p.qty} ${esc(p.symbol)} @ ${p.price.toFixed(2)}\n` +
+      `equity ${p.equity.toFixed(2)}  ·  drawdown ${p.drawdown.toFixed(2)}\n${esc(p.at)}</title></circle>`;
+  }).join('');
+
+  const ticks = [hi, (hi + lo) / 2, lo].map((v) =>
+    `<text x="${PAD.l - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" fill="currentColor" ` +
+    `opacity=".55" font-size="10">${v.toFixed(0)}</text>` +
+    `<line x1="${PAD.l}" y1="${Y(v).toFixed(1)}" x2="${W - PAD.r}" y2="${Y(v).toFixed(1)}" ` +
+    `stroke="currentColor" opacity=".08"/>`).join('');
+
+  const last = points[points.length - 1];
+  svg.innerHTML =
+    ticks +
+    `<path d="${ddArea}" fill="var(--flag)" opacity=".13"/>` +
+    `<line x1="${PAD.l}" y1="${zeroY}" x2="${W - PAD.r}" y2="${zeroY}" stroke="currentColor" opacity=".35" stroke-dasharray="3 3"/>` +
+    `<path d="${line}" fill="none" stroke="${last.equity >= 0 ? 'var(--ok)' : 'var(--flag)'}" stroke-width="1.8"/>` +
+    dots;
+
+  const maxDd = Math.max(...points.map((p) => p.drawdown));
+  $('eqnote').textContent =
+    `· ${points.length} fills · last ${last.equity.toFixed(2)} · max drawdown ${maxDd.toFixed(2)}`;
+}
+
 function render(s) {
   $('autonomy').textContent = s.autonomy;
   $('autonomy').className = 'tag ' + (s.autonomy === 'AUTO' ? 'auto' : 'shadow');
@@ -210,6 +288,8 @@ function render(s) {
 
   rows($('costs'), s.costByAgent, (r) =>
     `<tr><td>${esc(r.agent)}</td><td class="num">${r.calls}</td><td class="num">${cost(r.cost)}</td><td class="num">${fmt(r.avg_latency, 0)}</td></tr>`, 4);
+
+  drawEquity(s.equity || []);
 
   const p = s.performance || { trades: 0 };
   $('ptrades').textContent = p.trades;
