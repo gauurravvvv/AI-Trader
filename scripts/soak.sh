@@ -78,7 +78,7 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   # Backgrounded and waited on, rather than run in the foreground, so the trap
   # can reach the child: a foreground child swallows the signal and the soak
   # cannot shut it down cleanly.
-  node --import tsx apps/daemon/src/main.ts "${EXTRA[@]:-}" >> "$LOG" 2>&1 &
+  node --env-file-if-exists=.env --import tsx apps/daemon/src/main.ts "${EXTRA[@]:-}" >> "$LOG" 2>&1 &
   CHILD=$!
   # `|| true` so a non-zero exit is a restart, not the end of the soak: an
   # unattended run that stops at the first crash has not soaked anything.

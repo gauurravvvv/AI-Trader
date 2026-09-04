@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
-    "dev": "node --import tsx apps/daemon/src/main.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx apps/daemon/src/main.ts",
     "smoke:news": "pnpm --filter @aegis/daemon smoke:news",
     "report": "pnpm --filter @aegis/daemon report",
     "smoke:cost": "pnpm --filter @aegis/daemon smoke:cost",
