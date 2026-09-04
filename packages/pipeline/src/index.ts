@@ -10,3 +10,5 @@ export { DailySummary, collectSummary, summaryBody } from './summary.js';
 export type { DaySummary } from './summary.js';
 export { NewsScoutAgent, interleave, SIG_NEWS } from './news.js';
 export type { NewsDeps, ScoutedStory } from './news.js';
+export { NewsTraderAgent, gateNewsTrade, DEFAULT_NEWS_RULE } from './news-trader.js';
+export type { NewsTradeRule, NewsGateResult, NewsRejectReason, NewsTraderDeps, Venue } from './news-trader.js';

@@ -151,7 +151,10 @@ export class PositionGuardianAgent extends BaseAgent {
     private readonly p: PipelineDeps & { ledger: Ledger; prices: YahooPriceSource; router: OrderRouter },
     private readonly rule: ExitRule = DRIFT_EXIT,
   ) {
-    super('position-guardian', { intervalMs: 60 * 1000 }, p);
+    // One guardian per venue, so the name carries the book it watches.
+    // Two agents called 'position-guardian' are indistinguishable in the log
+    // and merge into one row in the per-agent stats.
+    super(`guardian:${p.router.venue}`, { intervalMs: 60 * 1000 }, p);
   }
 
   override shouldRun(): boolean {

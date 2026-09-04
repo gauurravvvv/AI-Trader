@@ -27,10 +27,29 @@ describe('formatLine', () => {
     expect(a.indexOf('✓')).toBe(b.indexOf('✓'));
   });
 
-  it('does not truncate the longest agent name', () => {
-    const name = 'position-guardian';
-    const s = formatLine({ at, agent: name, kind: 'ok', msg: 'x', colour: false });
-    expect(s).toContain(name);
+  it('does not truncate any agent name the system actually uses', () => {
+    // Every registered agent, longest first. A truncated name is ungreppable,
+    // and 'guardian:sim-crypto' is what forced the column from 18 to 20.
+    for (const name of [
+      'guardian:sim-crypto',
+      'guardian:sim-us',
+      'earnings-reader',
+      'surprise-scorer',
+      'thesis-auditor',
+      'edgar-poller',
+      'news-trader',
+      'news-scout',
+      'news-triage',
+      'order-router',
+      'reconciler',
+      'consensus',
+      'execution',
+      'dashboard',
+      'notifier',
+      'daemon',
+    ]) {
+      expect(formatLine({ at, agent: name, kind: 'ok', msg: 'x', colour: false })).toContain(name);
+    }
   });
 
   it('uses a distinct glyph for every kind', () => {

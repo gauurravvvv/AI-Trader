@@ -4,7 +4,7 @@ import { createLogger } from '@aegis/logger';
 import { BudgetGovernor } from '@aegis/budget';
 import { SignalBus, Orchestrator, startHeartbeat, type AgentDeps } from '@aegis/agents';
 import { setConcurrency } from '@aegis/claude';
-import { SimAdapter, US_COSTS } from '@aegis/brokers';
+import { SimAdapter, US_COSTS, CRYPTO_COSTS, US_CALENDAR, CRYPTO_CALENDAR, type FillEvent } from '@aegis/brokers';
 import { YahooPriceSource, YahooConsensus, YahooNewsSource } from '@aegis/marketdata';
 import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
@@ -16,10 +16,13 @@ import {
   EarningsReaderAgent,
   PositionGuardianAgent,
   NewsScoutAgent,
+  NewsTraderAgent,
   DailySummary,
   universeFor,
   type PipelineDeps,
   type NewsDeps,
+  type NewsTraderDeps,
+  type Venue,
 } from '@aegis/pipeline';
 
 const cfg = loadConfig(process.env);
@@ -55,14 +58,31 @@ setConcurrency(cfg.claudeConcurrency);
 const prices = new YahooPriceSource();
 const consensus = new YahooConsensus();
 const news = new YahooNewsSource();
+const startingCash = process.env.STARTING_CASH ?? '100000';
+
 const adapter = new SimAdapter(
   'sim-us',
   'US',
   prices,
   US_COSTS,
-  process.env.STARTING_CASH ?? '100000',
+  startingCash,
   { tickSize: '0.01', lotSize: '1', minNotional: '1', supportsFractional: false, supportsShort: false },
-  { isOpen: isUsMarketOpen },
+  US_CALENDAR,
+);
+
+// Crypto trades around the clock, in fractions, on a different cost stack.
+// Note what the 24/7 calendar removes: the market-hours gate is the guard that
+// stops the US pipeline overnight, so on this venue the position caps, the
+// daily loss stop and the kill switch are the only things between a bad signal
+// at 03:00 and a filled order.
+const cryptoAdapter = new SimAdapter(
+  'sim-crypto',
+  'CRYPTO',
+  prices,
+  CRYPTO_COSTS,
+  process.env.STARTING_CASH_CRYPTO ?? '25000',
+  { tickSize: '0.01', lotSize: '0.0001', minNotional: '10', supportsFractional: true, supportsShort: false },
+  CRYPTO_CALENDAR,
 );
 
 const ledger = new Ledger(db);
@@ -81,23 +101,33 @@ raise = (n) => {
   notifier.enqueue(n);
 };
 
-const router = new OrderRouter({
+const onFill = (venue: string) => (f: FillEvent) => {
+  log.ok('execution', `FILLED ${f.side} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)} (${venue})`);
+  notifier.enqueue({
+    kind: 'ORDER_FILLED',
+    subject: `${f.side.toUpperCase()} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`,
+    body: fillBody({
+      symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, fee: f.fee,
+    }),
+  });
+};
+
+const router = new OrderRouter({ db, adapter, ledger, notify: raise, onFill: onFill(adapter.venue) });
+router.start();
+
+const cryptoRouter = new OrderRouter({
   db,
-  adapter,
+  adapter: cryptoAdapter,
   ledger,
   notify: raise,
-  onFill: (f) => {
-    log.ok('execution', `FILLED ${f.side} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`);
-    notifier.enqueue({
-      kind: 'ORDER_FILLED',
-      subject: `${f.side.toUpperCase()} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`,
-      body: fillBody({
-        symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, fee: f.fee,
-      }),
-    });
-  },
+  onFill: onFill(cryptoAdapter.venue),
 });
-router.start();
+cryptoRouter.start();
+
+const venues: Venue[] = [
+  { market: 'US', router, ledger },
+  { market: 'CRYPTO', router: cryptoRouter, ledger },
+];
 
 const reconciler = new Reconciler(ledger, adapter, db);
 reconciler.onBreak((r) => {
@@ -132,11 +162,12 @@ const pipelineDeps: PipelineDeps = {
 // regulator to file with and Indian results go to the exchanges, not the SEC.
 // The scout therefore watches the full universe even though only the US names
 // have a trading venue wired so far.
-const newsDeps: NewsDeps = {
-  ...pipelineDeps,
-  news,
-  universe: universeFor(['US', 'CRYPTO', 'IN']),
-};
+const newsUniverse = universeFor(['US', 'CRYPTO', 'IN']);
+const newsDeps: NewsDeps = { ...pipelineDeps, news, universe: newsUniverse };
+
+// The trader sees every scouted signal but can only act on markets with a venue
+// wired. India is scouted and not traded; that is deliberate, not an oversight.
+const traderDeps: NewsTraderDeps = { ...pipelineDeps, venues, universe: newsUniverse };
 
 // One summary per calendar day, idempotent on the day rather than on a timer,
 // so a restart cannot produce a second one.
@@ -149,6 +180,12 @@ orchestrator.register(new EarningsReaderAgent(pipelineDeps), 10_000);
 // it must never stop us closing one.
 orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 20_000);
 orchestrator.register(new NewsScoutAgent(newsDeps), 30_000);
+orchestrator.register(new NewsTraderAgent(traderDeps), 40_000);
+// A guardian per venue: exits are per-book, and crypto's book never closes.
+orchestrator.register(
+  new PositionGuardianAgent({ ...pipelineDeps, ledger, router: cryptoRouter }),
+  50_000,
+);
 
 const dashboard = new Dashboard({
   db,
@@ -183,7 +220,11 @@ log.event(
 );
 log.event(
   'daemon',
-  `news universe ${String(newsDeps.universe.length)} names across US, crypto and India`,
+  `news universe ${String(newsUniverse.length)} names across US, crypto and India`,
+);
+log.event(
+  'daemon',
+  `venues: ${venues.map((v) => `${v.router.venue} (${v.market})`).join(', ')} · India scouted, not traded`,
 );
 if (isHalted(db)) log.warn('daemon', 'system is HALTED — clear it to resume trading');
 if (autonomy === 'SHADOW') {
@@ -219,18 +260,10 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     dashboard.stop();
     stopReconciler();
     router.stop();
+    cryptoRouter.stop();
     orchestrator.stop();
     db.close();
     log.ok('daemon', 'clean shutdown');
     process.exit(0);
   });
-}
-
-/** US equities regular session, 09:30–16:00 ET, weekdays. */
-function isUsMarketOpen(at: Date): boolean {
-  const et = new Date(at.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const day = et.getDay();
-  if (day === 0 || day === 6) return false;
-  const mins = et.getHours() * 60 + et.getMinutes();
-  return mins >= 9 * 60 + 30 && mins < 16 * 60;
 }

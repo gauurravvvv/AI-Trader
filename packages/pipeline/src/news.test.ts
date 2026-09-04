@@ -149,7 +149,7 @@ describe('NewsScoutAgent', () => {
     const many = Array.from({ length: 40 }, (_, i) => story('NVDA', `n${String(i)}`, `headline ${String(i)}`));
     const ask = vi.fn(reply('{"items":[]}'));
     await new NewsScoutAgent(deps({ news: fakeNews({ NVDA: many }), ask, batchCap: 5 })).execute();
-    const prompt = ask.mock.calls[0]![0];
+    const prompt = ask.mock.calls[0]![0] as string;
     expect(prompt).toContain('4. headline 4');
     expect(prompt).not.toContain('5. headline 5');
   });
