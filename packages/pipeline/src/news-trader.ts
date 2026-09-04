@@ -7,6 +7,7 @@ import type { OrderRouter } from '@aegis/risk';
 import type { PipelineDeps } from './agents.js';
 import type { UniverseEntry } from './universe.js';
 import { SIG_NEWS } from './news.js';
+import { newsConditions } from './watch.js';
 
 /** Where a market's orders go. One per market the system can actually trade. */
 export interface Venue {
@@ -222,11 +223,7 @@ export class NewsTraderAgent extends BaseAgent {
         Math.round(score * 100),
         d.category,
         `news: ${d.why} — ${d.title}`.slice(0, 500),
-        JSON.stringify([
-          'the story is corrected, retracted, or denied by the company',
-          'price closes below the entry stop',
-          'the move reverses without a follow-up story',
-        ]),
+        JSON.stringify(newsConditions(price, d.direction)),
         sourceSignalId,
       );
     const decisionId = Number(ins.lastInsertRowid);

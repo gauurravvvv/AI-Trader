@@ -227,4 +227,90 @@ describe('PositionGuardianAgent', () => {
     await new PositionGuardianAgent(d).execute();
     expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 1 });
   });
+
+  // ── Thesis-break exits ────────────────────────────────────────────────────
+
+  /** Record the entry decision the guardian will look up, with its conditions. */
+  function recordEntry(conditions: unknown): void {
+    db.prepare(
+      `INSERT INTO decisions (symbol, market, venue, side, thesis_break, status)
+       VALUES ('NVDA','US',?, 'buy', ?, 'EXECUTED')`,
+    ).run(VENUE, JSON.stringify(conditions));
+  }
+
+  function newsSignal(direction: number, materiality: number): void {
+    db.prepare(
+      `INSERT INTO agent_signals (agent, signal_type, symbol, data, created_at)
+       VALUES ('news-scout','news_signal','NVDA',?, datetime('now','+1 second'))`,
+    ).run(JSON.stringify({ direction, materiality }));
+  }
+
+  it('exits on a new filing before any price rule fires', async () => {
+    openPosition();
+    recordEntry([{ kind: 'NEW_FILING', why: 'the next report supersedes the surprise' }]);
+    db.prepare(
+      `INSERT INTO agent_signals (agent, signal_type, symbol, data, created_at)
+       VALUES ('edgar-poller','filing_8k','NVDA','{}', datetime('now','+1 second'))`,
+    ).run();
+    mark = '101';                       // nothing a price rule would act on
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 1 });
+    expect(notes.find((n) => n.kind === 'POSITION_EXITED')!.subject).toContain('THESIS_BREAK');
+  });
+
+  it('exits on material opposing news while the position is still green', async () => {
+    openPosition();
+    recordEntry([{ kind: 'CONTRADICTING_NEWS', minMateriality: 70, why: 'the read is falsified' }]);
+    newsSignal(-0.9, 85);
+    mark = '104';                       // up 4% — no stop, no target
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 1 });
+    expect(lines.join('\n')).toContain('THESIS_BREAK');
+  });
+
+  it('holds when the opposing news is below the materiality it was given', async () => {
+    openPosition();
+    recordEntry([{ kind: 'CONTRADICTING_NEWS', minMateriality: 70, why: 'x' }]);
+    newsSignal(-0.9, 40);
+    mark = '104';
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 0 });
+  });
+
+  it('holds when the news agrees with the position', async () => {
+    openPosition();
+    recordEntry([{ kind: 'CONTRADICTING_NEWS', minMateriality: 70, why: 'x' }]);
+    newsSignal(0.95, 99);
+    mark = '104';
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 0 });
+  });
+
+  it('says so, and holds, when the recorded thesis is prose it cannot evaluate', async () => {
+    openPosition();
+    recordEntry(['guidance is lowered or withdrawn at the next report']);
+    mark = '101';
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(lines.join('\n')).toContain('cannot be evaluated');
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 0 });
+  });
+
+  it('still applies the price stop when no thesis was recorded at all', async () => {
+    openPosition();
+    mark = '89';
+    await new PositionGuardianAgent(guardianDeps()).execute();
+    expect(notes.find((n) => n.kind === 'POSITION_EXITED')!.subject).toContain('STOP_LOSS');
+  });
+
+  it('checks the thesis with no model call, so it works at RULES_ONLY', async () => {
+    openPosition();
+    recordEntry([{ kind: 'PRICE_BELOW', value: '95', why: 'the drift did not materialise' }]);
+    mark = '94';
+    const d = guardianDeps();
+    d.budget.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '99', latencyMs: 1, ok: true });
+    expect(d.budget.tier()).toBe('RULES_ONLY');
+    await new PositionGuardianAgent(d).execute();
+    expect(db.prepare(`SELECT COUNT(*) c FROM orders WHERE side='sell'`).get()).toEqual({ c: 1 });
+    expect(d.budget.spent()).toBe('99.000000');
+  });
 });

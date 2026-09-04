@@ -14,3 +14,5 @@ export { NewsTraderAgent, gateNewsTrade, DEFAULT_NEWS_RULE } from './news-trader
 export type { NewsTradeRule, NewsGateResult, NewsRejectReason, NewsTraderDeps, Venue } from './news-trader.js';
 export { closedTrades, summarise, maxDrawdown, compareToBenchmark, byConfidence, bySource, performanceReport } from './evaluator.js';
 export type { ClosedTrade, Performance, BenchmarkResult, TierBucket } from './evaluator.js';
+export { evaluateWatch, readConditions, driftConditions, newsConditions, newFilingSince, opposingNewsSince, WatchConditionSchema } from './watch.js';
+export type { WatchCondition, WatchContext, WatchBreak } from './watch.js';

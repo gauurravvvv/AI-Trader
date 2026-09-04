@@ -4,6 +4,7 @@ import type { Ledger } from '@aegis/ledger';
 import type { YahooPriceSource } from '@aegis/marketdata';
 import type { OrderRouter } from '@aegis/risk';
 import type { PipelineDeps } from './agents.js';
+import { evaluateWatch, readConditions, newFilingSince, opposingNewsSince } from './watch.js';
 
 export interface ExitRule {
   /** Fraction below entry that triggers a stop. 0.08 = -8%. */
@@ -32,6 +33,7 @@ export type ExitReason =
   | 'TAKE_PROFIT'
   | 'TRAILING_STOP'
   | 'TIME_STOP'
+  | 'THESIS_BREAK'
   | 'HALT_FLATTEN';
 
 export interface ExitDecision {
@@ -138,6 +140,11 @@ interface PosRow {
   opened_at: string | null;
 }
 
+interface EntryRow {
+  id: number;
+  thesis_break: string | null;
+}
+
 /**
  * Watches every open position and closes it when a mechanical rule fires.
  *
@@ -185,6 +192,16 @@ export class PositionGuardianAgent extends BaseAgent {
           ? 0
           : Math.floor((Date.now() - new Date(pos.opened_at).getTime()) / 86_400_000);
 
+      // The thesis is checked before the price rules. A position whose reason
+      // for existing has been falsified should be closed on that basis, not
+      // held until it happens to hit a stop.
+      const broken = this.checkThesis(pos, quote.last, heldDays);
+      if (broken !== null) {
+        this.log.warn(this.name, `${pos.symbol}  THESIS_BREAK  ${broken} — exiting`);
+        await this.close(pos, quote.last, 'THESIS_BREAK', broken);
+        continue;
+      }
+
       const d = evaluateExit(pos.avg_cost, quote.last, high, heldDays, this.rule);
       if (!d.exit) {
         this.log.event(this.name, `${pos.symbol}  hold  ${d.detail}`);
@@ -194,6 +211,44 @@ export class PositionGuardianAgent extends BaseAgent {
       this.log.warn(this.name, `${pos.symbol}  ${d.reason ?? ''}  ${d.detail} — exiting`);
       await this.close(pos, quote.last, d.reason ?? 'STOP_LOSS', d.detail);
     }
+  }
+
+  /**
+   * Evaluate the conditions recorded when the position was opened.
+   *
+   * Returns the detail of the first condition that fired, or null. Costs one
+   * query and no model call, so it runs at every budget tier.
+   */
+  private checkThesis(pos: PosRow, price: string, heldDays: number): string | null {
+    const entry = this.db
+      .prepare(
+        `SELECT id, thesis_break FROM decisions
+          WHERE symbol = ? AND venue = ? AND side = 'buy' AND status = 'EXECUTED'
+          ORDER BY id DESC LIMIT 1`,
+      )
+      .get(pos.symbol, this.p.router.venue) as EntryRow | undefined;
+    if (!entry) return null;
+
+    const { conditions, unevaluable } = readConditions(entry.thesis_break);
+    if (unevaluable > 0 && conditions.length === 0) {
+      // Written before conditions were structured. Say so once rather than
+      // reporting "thesis intact" about a thesis nobody can check.
+      this.log.event(
+        this.name,
+        `${pos.symbol}: ${String(unevaluable)} thesis clause(s) are prose and cannot be evaluated`,
+      );
+      return null;
+    }
+    if (conditions.length === 0) return null;
+
+    const since = pos.opened_at ?? new Date(0).toISOString();
+    const res = evaluateWatch(conditions, {
+      price,
+      heldDays,
+      newFilingSinceEntry: newFilingSince(this.db, pos.symbol, since),
+      opposingNewsMateriality: opposingNewsSince(this.db, pos.symbol, since, 'long'),
+    });
+    return res.broken ? res.detail : null;
   }
 
   private async close(

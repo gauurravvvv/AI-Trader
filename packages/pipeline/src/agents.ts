@@ -8,6 +8,8 @@ import { standardisedSue } from '@aegis/marketdata';
 import { readEarnings, scoreSue } from '@aegis/alpha';
 import type { OrderRouter } from '@aegis/risk';
 import { auditDecision } from './auditor.js';
+import { driftConditions } from './watch.js';
+import { DRIFT_EXIT } from './guardian.js';
 import { edgarWatchable, type UniverseEntry } from './universe.js';
 
 export interface PipelineDeps extends AgentDeps {
@@ -225,11 +227,9 @@ export class EarningsReaderAgent extends BaseAgent {
         auditScore,
         tier,
         why,
-        JSON.stringify([
-          'guidance is lowered or withdrawn at the next report',
-          'price closes below the entry stop',
-          'a restatement or auditor change is disclosed',
-        ]),
+        // Structured, so the guardian can actually evaluate them. Prose
+        // clauses were written here for months and read by nothing.
+        JSON.stringify(driftConditions(quote.last, DRIFT_EXIT.timeStopDays)),
         sourceSignalId,
       );
     const decisionId = Number(ins.lastInsertRowid);
