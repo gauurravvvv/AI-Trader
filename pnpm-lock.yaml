@@ -145,6 +145,9 @@ importers:
       '@aegis/db':
         specifier: workspace:*
         version: link:../db
+      '@aegis/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
       '@aegis/risk':
         specifier: workspace:*
         version: link:../risk

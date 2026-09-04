@@ -91,6 +91,17 @@
   </section>
 
   <section>
+    <h2>Performance <span class="muted" id="perfnote"></span></h2>
+    <div class="kv">
+      <div><span>Closed</span><b id="ptrades">0</b></div>
+      <div><span>Win rate</span><b id="pwin">—</b></div>
+      <div><span>Realised</span><b id="prealised">0.00</b></div>
+      <div><span>Max DD</span><b id="pdd">0.00</b></div>
+    </div>
+    <p class="muted" id="perfcaveat" style="margin:.6rem 0 0;font-size:.78rem"></p>
+  </section>
+
+  <section>
     <h2>Positions</h2>
     <div class="scroll"><table>
       <thead><tr><th>Symbol</th><th class="num">Qty</th><th class="num">Avg cost</th><th class="num">Realised</th></tr></thead>
@@ -120,6 +131,15 @@
     <div class="scroll"><table>
       <thead><tr><th>Symbol</th><th>Side</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Fee</th><th>When</th></tr></thead>
       <tbody id="fills"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>News — what the scout read</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th>Category</th><th class="num">Dir</th><th class="num">Score</th>
+        <th>Headline</th><th>Why</th><th>Acted on</th></tr></thead>
+      <tbody id="news"></tbody>
     </table></div>
   </section>
 
@@ -190,6 +210,36 @@ function render(s) {
 
   rows($('costs'), s.costByAgent, (r) =>
     `<tr><td>${esc(r.agent)}</td><td class="num">${r.calls}</td><td class="num">${cost(r.cost)}</td><td class="num">${fmt(r.avg_latency, 0)}</td></tr>`, 4);
+
+  const p = s.performance || { trades: 0 };
+  $('ptrades').textContent = p.trades;
+  $('pwin').textContent = p.trades ? (p.winRate * 100).toFixed(1) + '%' : '—';
+  const pr = Number(p.realised || 0);
+  const prEl = $('prealised');
+  prEl.textContent = fmt(pr);
+  prEl.className = pr > 0 ? 'pos' : pr < 0 ? 'neg' : '';
+  $('pdd').textContent = fmt(p.maxDrawdown || 0);
+  $('perfnote').textContent = p.profitFactor != null ? '· PF ' + p.profitFactor.toFixed(2) : '';
+  $('perfcaveat').textContent = p.trades === 0
+    ? 'Nothing has closed yet.'
+    : p.meaningful
+      ? 'Run pnpm report for the comparison against buy-and-hold.'
+      : 'Under 20 closed trades — these numbers are noise. Not a track record.';
+
+  rows($('news'), s.news, (r) => {
+    const d = Number(r.direction);
+    const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted';
+    const acted = r.consumed ? esc(r.consumed_by || 'yes') : '—';
+    const head = r.link
+      ? `<a href="${esc(r.link)}" target="_blank" rel="noreferrer noopener">${esc(String(r.title).slice(0, 90))}</a>`
+      : esc(String(r.title).slice(0, 90));
+    return `<tr><td><b>${esc(r.symbol)}</b></td><td><span class="pill">${esc(r.category)}</span></td>
+      <td class="num ${cls}">${d > 0 ? '+' : ''}${d.toFixed(2)}</td>
+      <td class="num">${r.confidence ?? '—'}</td>
+      <td>${head}</td>
+      <td class="muted">${esc(String(r.why).slice(0, 70))}</td>
+      <td class="muted">${acted}</td></tr>`;
+  }, 7);
 
   rows($('positions'), s.positions, (r) => {
     const pnl = Number(r.realised_pnl);

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Db } from '@aegis/db';
 import { isHalted, setHalt } from '@aegis/risk';
+import { closedTrades, summarise } from '@aegis/pipeline';
 
 export interface DashboardDeps {
   db: Db;
@@ -39,6 +40,28 @@ export class Dashboard {
         this.clients.delete(c);
       }
     }
+  }
+
+  /**
+   * Lifetime result, straight from the ledger. No benchmark here: fetching SPY
+   * on every three-second dashboard poll would hammer Yahoo for a number that
+   * moves once a day. `pnpm report` does the comparison.
+   */
+  private performance(): Record<string, unknown> {
+    const trades = closedTrades(this.deps.db);
+    const p = summarise(trades);
+    return {
+      trades: p.trades,
+      wins: p.wins,
+      losses: p.losses,
+      winRate: p.winRate,
+      realised: p.realised,
+      maxDrawdown: p.maxDrawdown,
+      profitFactor: p.profitFactor,
+      // Below this the numbers above are noise, and the UI says so rather than
+      // rendering a confident-looking percentage.
+      meaningful: p.trades >= 20,
+    };
   }
 
   snapshot(): Record<string, unknown> {
@@ -80,6 +103,33 @@ export class Dashboard {
         `SELECT id, agent, signal_type, symbol, confidence, consumed, consumed_by, created_at
          FROM agent_signals ORDER BY id DESC LIMIT 40`,
       ),
+      // News carries a payload worth surfacing on its own: the headline is the
+      // reason for the trade, and a signal list showing only "news_signal NVDA
+      // 77" makes the operator open the database to find out why.
+      news: q(
+        `SELECT id, symbol, confidence, consumed, consumed_by, data, created_at
+         FROM agent_signals WHERE signal_type = 'news_signal'
+         ORDER BY id DESC LIMIT 25`,
+      ).map((r) => {
+        const row = r as { data: string } & Record<string, unknown>;
+        let d: Record<string, unknown> = {};
+        try {
+          d = JSON.parse(row.data) as Record<string, unknown>;
+        } catch {
+          /* a malformed payload must not blank the panel */
+        }
+        return {
+          ...row,
+          data: undefined,
+          title: d['title'] ?? '',
+          category: d['category'] ?? '',
+          direction: d['direction'] ?? 0,
+          publisher: d['publisher'] ?? '',
+          link: d['link'] ?? '',
+          why: d['why'] ?? '',
+        };
+      }),
+      performance: this.performance(),
       llmCalls: q(
         `SELECT agent, model, tokens_in, tokens_out, cost_usd, latency_ms, ok, created_at
          FROM llm_calls ORDER BY id DESC LIMIT 30`,

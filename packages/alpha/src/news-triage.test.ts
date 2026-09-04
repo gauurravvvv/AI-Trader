@@ -3,7 +3,7 @@ import { openDb } from '@aegis/db';
 import { BudgetGovernor } from '@aegis/budget';
 import { createLogger } from '@aegis/logger';
 import type { AskFn, ClaudeResult } from '@aegis/claude';
-import { triageNews, buildBatch, dedupeByIndex, newsScore, normaliseCategory, parseItems } from './news-triage.js';
+import { triageNews, buildBatch, dedupeByIndex, newsScore, normaliseCategory, parseItems, salvageObjects } from './news-triage.js';
 
 const log = createLogger({ colour: false, sink: () => undefined });
 const budget = (): BudgetGovernor => new BudgetGovernor(openDb(':memory:'), 100, '2026-09-01');
@@ -188,5 +188,59 @@ describe('triageNews resilience', () => {
       expect(out.items).toHaveLength(3);
       expect(out.items.map((i) => i.category)).toEqual(['GUIDANCE', 'PRODUCT', 'PRODUCT']);
     }
+  });
+});
+
+describe('salvageObjects', () => {
+  it('recovers every complete object from a truncated array', () => {
+    const text = '```json\n{"items":[{"i":0,"materiality":80,"direction":1,"category":"MA","why":"a"},' +
+                 '{"i":1,"materiality":20,"direction":0,"category":"NOISE","why":"b"},' +
+                 '{"i":2,"materiality":45,"direction":';
+    const out = salvageObjects(text);
+    // The envelope object never closes, so only the two complete ratings survive.
+    expect(out).toHaveLength(2);
+    expect((out[0] as { i: number }).i).toBe(0);
+  });
+
+  it('is not fooled by a brace inside a string', () => {
+    const out = salvageObjects('{"why":"the guidance {raised} again","i":0}');
+    expect(out).toHaveLength(1);
+    expect((out[0] as { why: string }).why).toBe('the guidance {raised} again');
+  });
+
+  it('handles an escaped quote inside a string', () => {
+    const out = salvageObjects('{"why":"they said \\"beat\\" twice","i":0}');
+    expect((out[0] as { why: string }).why).toBe('they said "beat" twice');
+  });
+
+  it('returns nothing for prose', () => {
+    expect(salvageObjects('I think the first headline is bullish.')).toEqual([]);
+  });
+
+  it('survives a stray closing brace without going negative', () => {
+    expect(salvageObjects('} {"i":0}')).toHaveLength(1);
+  });
+});
+
+describe('triageNews on a truncated reply', () => {
+  it('salvages the ratings that arrived instead of discarding the batch', async () => {
+    // This is what the live daemon produced on a 23-symbol batch: the reply ran
+    // past the output budget and stopped mid-object.
+    const truncated =
+      '```json\n{"items":[' +
+      '{"i":0,"materiality":80,"direction":0.9,"category":"MA","why":"acquisition"},' +
+      '{"i":1,"materiality":15,"direction":0,"category":"NOISE","why":"recap"},' +
+      '{"i":2,"materiality":60,"direction":-0.7,"cate';
+    const out = await triageNews(['a', 'b', 'c'], { budget: budget(), log, ask: reply(truncated) });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.items).toHaveLength(2);
+      expect(out.items[0]!.category).toBe('MA');
+    }
+  });
+
+  it('still fails when there is nothing to salvage', async () => {
+    const out = await triageNews(['a'], { budget: budget(), log, ask: reply('no json at all here') });
+    expect(out.ok).toBe(false);
   });
 });

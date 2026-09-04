@@ -211,12 +211,26 @@ export async function triageNews(
   });
 
   const envelope = parseModelJson(result.text, TriageSchema);
-  if (!envelope.ok) {
-    deps.log.error(agent, `triage parse failed: ${envelope.error}`);
-    return { ok: false, reason: envelope.error, stage: 'parse' };
+  let rawItems: unknown[];
+  if (envelope.ok) {
+    rawItems = envelope.value.items;
+  } else {
+    // A long batch can exhaust the output budget mid-array, leaving JSON that
+    // no parser will accept. The ratings before the cut are still perfectly
+    // good, and throwing away twenty of them because the twenty-first was
+    // truncated is the expensive kind of strict.
+    rawItems = salvageObjects(result.text);
+    if (rawItems.length === 0) {
+      deps.log.error(agent, `triage parse failed: ${envelope.error}`);
+      return { ok: false, reason: envelope.error, stage: 'parse' };
+    }
+    deps.log.warn(
+      agent,
+      `reply was truncated or malformed — salvaged ${String(rawItems.length)} rating(s)`,
+    );
   }
 
-  const { items: valid, dropped, unknownCategories } = parseItems(envelope.value.items);
+  const { items: valid, dropped, unknownCategories } = parseItems(rawItems);
   if (unknownCategories.length > 0) {
     deps.log.event(agent, `categories mapped to OTHER: ${unknownCategories.join(', ')}`);
   }
@@ -225,6 +239,52 @@ export async function triageNews(
   const strays = dropped + (valid.length - items.length);
   if (strays > 0) deps.log.warn(agent, `dropped ${String(strays)} malformed or unsent rating(s)`);
   return { ok: true, items: dedupeByIndex(items) };
+}
+
+/**
+ * Pull every complete `{...}` out of a string, ignoring an unterminated tail.
+ *
+ * Brace-counting rather than a regex, because a `why` field can legally contain
+ * a brace and a regex cannot tell that from structure. Strings and their escapes
+ * are tracked so a quoted brace does not shift the depth.
+ */
+export function salvageObjects(text: string): unknown[] {
+  const out: unknown[] = [];
+  // A stack, not a depth counter: the ratings are nested inside the envelope
+  // object, so they never close back to depth zero and a top-level-only scan
+  // finds nothing at all in a truncated reply.
+  const starts: number[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      starts.push(i);
+      continue;
+    }
+    if (ch === '}') {
+      const start = starts.pop();
+      // A stray closing brace has no opener; ignore it rather than slicing.
+      if (start === undefined) continue;
+      try {
+        out.push(JSON.parse(text.slice(start, i + 1)));
+      } catch {
+        /* an object that will not parse is not a rating */
+      }
+    }
+  }
+  return out;
 }
 
 /** One rating per headline. A repeated index means the model lost its place. */

@@ -11,7 +11,13 @@ export interface NewsDeps extends PipelineDeps {
   maxAgeHours?: number;
   /** newsScore above which a story is worth emitting. */
   emitThreshold?: number;
-  /** Cap on headlines sent to the model per tick, across all symbols. */
+  /**
+   * Cap on headlines sent to the model per tick, across all symbols.
+   *
+   * 24 was too many: the reply ran past the output budget and was cut off
+   * mid-array. Salvage recovers most of it, but a batch that fits is better
+   * than a batch that has to be rescued.
+   */
   batchCap?: number;
 }
 
@@ -123,7 +129,7 @@ export class NewsScoutAgent extends BaseAgent {
    * symbol gets its second.
    */
   private async gather(): Promise<NewsItem[]> {
-    const cap = this.n.batchCap ?? 24;
+    const cap = this.n.batchCap ?? 14;
     const maxAge = this.n.maxAgeHours ?? 36;
 
     const perSymbol: NewsItem[][] = [];
