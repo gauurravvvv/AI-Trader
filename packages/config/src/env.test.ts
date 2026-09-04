@@ -64,7 +64,8 @@ describe('limits', () => {
     const c = loadConfig(base);
     expect(c.maxOpenPositions).toBe(8);
     expect(c.maxTradesPerDay).toBe(5);
-    expect(c.maxAnalysesPerDay).toBe(12);
+    // A runaway-loop backstop, not a daily allowance.
+    expect(c.maxAnalysesPerDay).toBe(400);
     expect(c.baseSizePct).toBeCloseTo(0.03);
   });
 

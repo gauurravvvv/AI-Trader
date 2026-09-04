@@ -286,12 +286,18 @@ describe('EarningsReaderAgent', () => {
     expect(lines.join('\n')).toContain('no EX-99.1');
   });
 
-  it('places nothing once the budget tier forbids entries', async () => {
+  it('still trades however much has been spent', () => {
     budget.record({
       agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1,
-      costUsd: '90', latencyMs: 1, ok: true,
+      costUsd: '9999', latencyMs: 1, ok: true,
     });
-    expect(budget.tier()).toBe('ESSENTIAL');
+    // The tier is still reported — it is useful to see — but it gates nothing.
+    expect(budget.tier()).toBe('RULES_ONLY');
+    expect(budget.allows('entry')).toBe(true);
+  });
+
+  it('stops while a plan usage limit is in force', async () => {
+    budget.pause(Date.now() + 600_000, 'usage limit reached');
     await runFullCycle();
     expect(decisions()).toHaveLength(0);
   });

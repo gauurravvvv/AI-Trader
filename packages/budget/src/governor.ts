@@ -16,6 +16,19 @@ export interface LlmCallRecord {
   promptHash?: string;
 }
 
+/**
+ * Spend thresholds, kept for reporting only.
+ *
+ * They no longer gate anything. Claude Code draws from the same plan pool as
+ * ordinary chat — Anthropic's docs are explicit that terminal work and chats
+ * share one allowance — so `total_cost_usd` is an API-equivalent figure, not a
+ * charge against a separate wallet that can be exhausted. Refusing to think
+ * because a notional dollar figure crossed a line was stopping real work for a
+ * constraint that does not exist.
+ *
+ * The real constraint is the plan's own usage limit, and that announces itself
+ * by failing the call. `pause()` below is what handles it.
+ */
 const THRESHOLDS: readonly (readonly [number, Tier])[] = [
   [0.95, 'RULES_ONLY'],
   [0.85, 'ESSENTIAL'],
@@ -151,7 +164,61 @@ export class BudgetGovernor {
     return this.tierFor(this.spent());
   }
 
-  allows(kind: CallKind): boolean {
-    return ALLOWED[this.tier()].has(kind);
+  /**
+   * May a call of this kind proceed?
+   *
+   * Only false while a usage-limit backoff is in effect. Spend does not gate
+   * anything: see the note on THRESHOLDS.
+   */
+  allows(_kind: CallKind): boolean {
+    return !this.paused();
+  }
+
+  /** What the old tier logic WOULD have said. Reported, never enforced. */
+  wouldRestrict(kind: CallKind): boolean {
+    return !ALLOWED[this.tier()].has(kind);
+  }
+
+  /**
+   * Stop calling for a while.
+   *
+   * The plan's usage limit is the genuine ceiling and it announces itself by
+   * failing the call, so the honest response is to back off and come back
+   * rather than to guess in advance how much is left. Held in the database so
+   * a restart does not immediately resume hammering a limit that is still in
+   * force.
+   */
+  pause(untilMs: number, reason: string): void {
+    this.db
+      .prepare(
+        `UPDATE budget_cycles SET paused_until = ?, pause_reason = ?, updated_at = datetime('now')
+          WHERE cycle_start = ?`,
+      )
+      .run(new Date(untilMs).toISOString(), reason, this.cycleStart);
+  }
+
+  /** True while a backoff is still running. */
+  paused(): boolean {
+    const r = this.db
+      .prepare('SELECT paused_until FROM budget_cycles WHERE cycle_start = ?')
+      .get(this.cycleStart) as { paused_until: string | null } | undefined;
+    const until = r?.paused_until;
+    if (until === null || until === undefined) return false;
+    return Date.parse(until) > Date.now();
+  }
+
+  pausedUntil(): string | null {
+    const r = this.db
+      .prepare('SELECT paused_until FROM budget_cycles WHERE cycle_start = ?')
+      .get(this.cycleStart) as { paused_until: string | null } | undefined;
+    return r?.paused_until ?? null;
+  }
+
+  resume(): void {
+    this.db
+      .prepare(
+        `UPDATE budget_cycles SET paused_until = NULL, pause_reason = NULL WHERE cycle_start = ?`,
+      )
+      .run(this.cycleStart);
   }
 }

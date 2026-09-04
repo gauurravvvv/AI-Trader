@@ -1,4 +1,4 @@
-export { askClaude, buildArgs, sanitiseEnv, setConcurrency, parseCliJson, ClaudeError } from './cli.js';
+export { askClaude, buildArgs, sanitiseEnv, setConcurrency, parseCliJson, isUsageLimit, ClaudeError } from './cli.js';
 export type { AskOpts, ClaudeResult, AskFn, ParsedCli } from './cli.js';
 export { estimateCost, estimateTokens, PRICING } from './pricing.js';
 export type { ModelId } from './pricing.js';

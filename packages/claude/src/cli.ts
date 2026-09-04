@@ -41,12 +41,43 @@ export interface ClaudeResult {
 export class ClaudeError extends Error {
   constructor(
     msg: string,
-    readonly code: 'TIMEOUT' | 'EXIT' | 'SPAWN',
+    readonly code: 'TIMEOUT' | 'EXIT' | 'SPAWN' | 'USAGE_LIMIT',
     readonly stderr = '',
+    /** For USAGE_LIMIT: when it is worth trying again. */
+    readonly retryAfterMs?: number,
   ) {
     super(msg);
     this.name = 'ClaudeError';
   }
+}
+
+/**
+ * Does this failure mean "you have used your allowance", rather than "this
+ * call was wrong"?
+ *
+ * This is the real ceiling. Claude Code draws from the same plan pool as chat,
+ * so there is no dollar figure to watch in advance — the limit simply arrives,
+ * and the only correct response is to wait rather than to keep retrying or to
+ * stop trading permanently.
+ *
+ * Matched on text because the CLI reports it as a message rather than a code.
+ * Deliberately narrow: mistaking an ordinary failure for a usage limit would
+ * idle the system for hours over a transient error.
+ */
+export function isUsageLimit(text: string): { limited: boolean; retryAfterMs: number } {
+  const t = text.toLowerCase();
+  const limited =
+    /usage limit|rate limit|429|too many requests|quota (?:exceeded|reached)|limit reached/.test(t);
+  if (!limited) return { limited: false, retryAfterMs: 0 };
+
+  // "resets at 3pm" / "try again in 42 minutes" — use it when offered.
+  const mins = /(?:in|after)\s+(\d+)\s*(?:minute|min)/.exec(t);
+  const secs = /(?:in|after)\s+(\d+)\s*(?:second|sec)/.exec(t);
+  if (mins?.[1] !== undefined) return { limited, retryAfterMs: Number(mins[1]) * 60_000 };
+  if (secs?.[1] !== undefined) return { limited, retryAfterMs: Number(secs[1]) * 1000 };
+  // Nothing stated: fifteen minutes is short enough to recover quickly from a
+  // brief rate limit and long enough not to hammer a real one.
+  return { limited, retryAfterMs: 15 * 60_000 };
 }
 
 /**
@@ -265,8 +296,24 @@ function run(prompt: string, opts: AskOpts): Promise<string> {
 
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve(stdout.trim());
-      else reject(new ClaudeError(`claude exited ${String(code)}`, 'EXIT', stderr.trim()));
+      if (code === 0) {
+        resolve(stdout.trim());
+        return;
+      }
+      const combined = `${stderr}\n${stdout}`.trim();
+      const limit = isUsageLimit(combined);
+      if (limit.limited) {
+        reject(
+          new ClaudeError(
+            `plan usage limit reached — backing off ${String(Math.round(limit.retryAfterMs / 60_000))}m`,
+            'USAGE_LIMIT',
+            combined.slice(0, 400),
+            limit.retryAfterMs,
+          ),
+        );
+        return;
+      }
+      reject(new ClaudeError(`claude exited ${String(code)}`, 'EXIT', combined.slice(0, 400)));
     });
 
     child.on('error', (e) => {

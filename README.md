@@ -79,22 +79,24 @@ one agent), `LOG_LEVEL=warn` (quiet), `DASHBOARD_PORT`, `STARTING_CASH`.
 
 ## What it costs to run
 
-Anthropic bills programmatic Claude usage (`claude -p`, which is what this uses)
-from a **separate monthly pool** to your chat usage: roughly $20 on Pro, $100 on
-Max 5×, $200 on Max 20×. It does not roll over and it stops hard when exhausted.
+Claude Code draws from the **same plan allowance as your ordinary chats** —
+Anthropic's docs are explicit that terminal work and chats share one pool. So
+there is no separate wallet to run dry, and the dollar figures below are an
+API-equivalent yardstick for what the agents cost, not a balance.
 
-So the budget is a first-class component, not an afterthought:
+*(An earlier version of this README said programmatic use billed from a separate
+metered pool and gated trading on it. That is the opt-in Console-credits path,
+not the default for a Pro or Max subscription. The gating was wrong and is gone.)*
 
-| Tier | Trigger | What stops |
-|---|---|---|
-| `NORMAL` | < 70% | nothing |
-| `CONSERVE` | ≥ 70% | discretionary research — the news scout stands down |
-| `ESSENTIAL` | ≥ 85% | new entries — nothing new is opened |
-| `RULES_ONLY` | ≥ 95% | all model calls |
+The real ceiling is the plan's **usage limit**, and it cannot be predicted — it
+announces itself by failing a call. When that happens the system parks every
+agent until the stated reset, or fifteen minutes if none is given, and records
+it so a restart does not resume hammering a limit still in force. The dashboard
+says so in a banner.
 
-**Exits, stops, trailing stops and the kill switch never stop.** They are
-deterministic code and never needed the model. Running out of credit must not leave
-an open position unmanaged, and a test asserts exactly that.
+**Exits, stops, trailing stops and the kill switch are never paused.** They are
+deterministic code and never needed the model. Running out of allowance must not
+leave an open position unmanaged, and a test asserts exactly that.
 
 ### What a call actually costs, and why the flags matter
 
@@ -102,27 +104,23 @@ an open position unmanaged, and a test asserts exactly that.
 server's tool schemas, every built-in tool, and per-machine sections like cwd and
 git status. It is billed as input, and it dwarfs anything you send.
 
-Measured on this machine, steady state per trivial haiku call:
+Measured on this machine, steady state per trivial call:
 
-| Configuration | Cost |
-|---|---|
-| default, no flags | **$0.130** |
-| `--strict-mcp-config` | $0.0043 |
-| `+ --disallowed-tools` | $0.0034 |
-| `+ --system-prompt` | **$0.0028** |
+| Configuration | haiku | sonnet |
+|---|---|---|
+| default, no flags | $0.130 | — |
+| `--strict-mcp-config` | $0.0043 | — |
+| `+ --disallowed-tools` | $0.0034 | — |
+| `+ --system-prompt` | **$0.0028** | **$0.05** |
 
 A 47× difference, none of it about our prompt. The default configuration is the
-worst case because the per-machine sections change between runs, so it invalidates
-its own cache on every call and pays creation price forever. Aegis passes all
-three flags; `pnpm smoke:cost` proves it on your machine.
+worst case because the per-machine sections change between runs, so it
+invalidates its own cache on every call. Aegis passes all three flags;
+`pnpm smoke:cost` proves it on your machine.
 
-Real measured costs: a news sweep is **$0.0146**, an earnings read plus audit is a
-few cents. `NEWS_INTERVAL_MIN` is the biggest lever on the monthly bill — every 10
-minutes is ~$63/month, every 20 is ~$31. Latency is 3–90s per call, so nothing here
-assumes a fast round trip.
-
-Cost is read from the CLI's own `total_cost_usd`, not estimated from token counts.
-Estimating understated the real bill by more than two orders of magnitude.
+Real costs: a news sweep is ~$0.015, an analyst call ~$0.014 on haiku, a
+challenger ~$0.05 on sonnet. Cost is read from the CLI's own `total_cost_usd`,
+not estimated — estimating understated it by more than two orders of magnitude.
 
 ---
 

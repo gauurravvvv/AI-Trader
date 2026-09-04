@@ -207,6 +207,11 @@ export class ReflectorAgent extends BaseAgent {
       });
     } catch (err) {
       const msg = err instanceof ClaudeError ? `${err.code}: ${err.message}` : String(err);
+    // A plan usage limit is not a bad call, it is the ceiling arriving. Park
+    // every agent until it lifts rather than burning retries against it.
+    if (err instanceof ClaudeError && err.code === 'USAGE_LIMIT') {
+      this.budget.pause(Date.now() + (err.retryAfterMs ?? 900_000), err.message);
+    }
       this.log.error(this.name, msg);
       return null;
     }

@@ -3,8 +3,10 @@ import { openDb } from '@aegis/db';
 import { BudgetGovernor } from './governor.js';
 
 let g: BudgetGovernor;
+let db: ReturnType<typeof openDb>;
 beforeEach(() => {
-  g = new BudgetGovernor(openDb(':memory:'), 100, '2026-09-01');
+  db = openDb(':memory:');
+  g = new BudgetGovernor(db, 100, '2026-09-01');
 });
 
 function burn(usd: number): void {
@@ -36,24 +38,47 @@ describe('BudgetGovernor', () => {
     burn(10); expect(g.tier()).toBe('RULES_ONLY');
   });
 
-  it('blocks discretionary calls in CONSERVE but still allows entries', () => {
+  it('reports CONSERVE as restricting discretionary work, without enforcing it', () => {
     burn(75);
-    expect(g.allows('discretionary')).toBe(false);
-    expect(g.allows('entry')).toBe(true);
-    expect(g.allows('position_protecting')).toBe(true);
+    expect(g.wouldRestrict('discretionary')).toBe(true);
+    expect(g.wouldRestrict('entry')).toBe(false);
+    expect(g.wouldRestrict('position_protecting')).toBe(false);
   });
 
-  it('blocks new entries in ESSENTIAL but still protects open positions', () => {
+  it('reports ESSENTIAL as restricting entries, without enforcing it', () => {
     burn(90);
-    expect(g.allows('entry')).toBe(false);
-    expect(g.allows('position_protecting')).toBe(true);
+    expect(g.wouldRestrict('entry')).toBe(true);
+    expect(g.wouldRestrict('position_protecting')).toBe(false);
   });
 
-  it('blocks every LLM call in RULES_ONLY — deterministic exits must still work', () => {
+  it('reports RULES_ONLY as restricting everything, without enforcing it', () => {
     burn(99);
     for (const k of ['discretionary', 'entry', 'position_protecting'] as const) {
-      expect(g.allows(k)).toBe(false);
+      expect(g.wouldRestrict(k)).toBe(true);
+      // Reported, not enforced: spend is a yardstick, not a wallet.
+      expect(g.allows(k)).toBe(true);
     }
+  });
+
+  it('only blocks while a plan usage limit is in force', () => {
+    expect(g.allows('entry')).toBe(true);
+    g.pause(Date.now() + 600_000, 'usage limit reached');
+    expect(g.paused()).toBe(true);
+    expect(g.allows('entry')).toBe(false);
+    g.resume();
+    expect(g.allows('entry')).toBe(true);
+  });
+
+  it('treats an elapsed backoff as over', () => {
+    g.pause(Date.now() - 1000, 'expired');
+    expect(g.paused()).toBe(false);
+    expect(g.allows('entry')).toBe(true);
+  });
+
+  it('remembers a backoff across a restart, so it does not resume hammering', () => {
+    g.pause(Date.now() + 600_000, 'usage limit');
+    const fresh = new BudgetGovernor(db, 100, '2026-09-01');
+    expect(fresh.paused()).toBe(true);
   });
 
   it('records failed calls too — a timeout still consumed budget', () => {

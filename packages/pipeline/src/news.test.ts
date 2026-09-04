@@ -165,9 +165,23 @@ describe('NewsScoutAgent', () => {
     expect(prompt).not.toContain('5. headline 5');
   });
 
-  it('stands down once the budget tier drops below NORMAL', () => {
-    budget.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '75', latencyMs: 1, ok: true });
+  it('keeps working however much has been spent', () => {
+    // Spend is not the constraint: Claude Code draws from the same plan
+    // allowance as chat, so a notional dollar figure is a yardstick, not a
+    // wallet. Refusing to read the news because of one was stopping real work.
+    budget.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '9999', latencyMs: 1, ok: true });
+    bus.emit({ agent: 'x', signalType: 'filing_8k', symbol: 'NVDA', data: {} });
+    expect(new NewsScoutAgent(deps()).shouldRun()).toBe(true);
+  });
+
+  it('stands down while a plan usage limit is in force', () => {
+    budget.pause(Date.now() + 600_000, 'usage limit');
     expect(new NewsScoutAgent(deps()).shouldRun()).toBe(false);
+  });
+
+  it('resumes once the backoff has expired', () => {
+    budget.pause(Date.now() - 1000, 'expired');
+    expect(new NewsScoutAgent(deps()).shouldRun()).toBe(true);
   });
 
   it('emits nothing when the model reply is unparseable', async () => {

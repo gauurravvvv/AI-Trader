@@ -132,8 +132,12 @@ export class Dashboard {
 
     const cycleStart = `${new Date().toISOString().slice(0, 7)}-01`;
     const budget = db
-      .prepare('SELECT spent_usd, tier FROM budget_cycles WHERE cycle_start = ?')
-      .get(cycleStart) as { spent_usd: string; tier: string } | undefined;
+      .prepare(
+        'SELECT spent_usd, tier, paused_until, pause_reason FROM budget_cycles WHERE cycle_start = ?',
+      )
+      .get(cycleStart) as
+      | { spent_usd: string; tier: string; paused_until: string | null; pause_reason: string | null }
+      | undefined;
 
     return {
       halted: isHalted(db),
@@ -144,6 +148,10 @@ export class Dashboard {
         spent: budget?.spent_usd ?? '0',
         cap: this.deps.monthlyBudgetUsd,
         tier: budget?.tier ?? 'NORMAL',
+        // Spend no longer gates anything; a plan usage limit does, and it is
+        // the only thing that can stop the agents thinking.
+        pausedUntil: budget?.paused_until ?? null,
+        pauseReason: budget?.pause_reason ?? null,
       },
       positions: q(
         `SELECT venue, symbol, qty, avg_cost, realised_pnl, opened_at

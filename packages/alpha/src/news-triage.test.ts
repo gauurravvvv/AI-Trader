@@ -87,13 +87,21 @@ describe('triageNews', () => {
     expect(b.spent()).toBe('0');
   });
 
-  it('is switched off first when the budget tightens', async () => {
+  it('runs however much has been spent', async () => {
     const b = budget();
-    b.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '75', latencyMs: 1, ok: true });
-    expect(b.tier()).toBe('CONSERVE');
+    b.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '9999', latencyMs: 1, ok: true });
+    const out = await triageNews(['x'], {
+      budget: b, log,
+      ask: reply('{"items":[{"i":0,"materiality":10,"direction":0,"category":"NOISE","why":"x"}]}'),
+    });
+    expect(out.ok).toBe(true);
+  });
+
+  it('stops while a plan usage limit is in force', async () => {
+    const b = budget();
+    b.pause(Date.now() + 600_000, 'usage limit');
     const out = await triageNews(['x'], { budget: b, log, ask: reply('{"items":[]}') });
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.stage).toBe('budget');
   });
 
   it('charges the budget for a call that threw', async () => {

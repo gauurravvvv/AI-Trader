@@ -101,7 +101,11 @@ export class SentinelAgent extends BaseAgent {
 
   override shouldRun(): boolean {
     if (!this.budget.allows('entry')) return false;
-    if (this.analysesToday() >= (this.cfg.maxAnalysesPerDay ?? 12)) return false;
+    // A backstop against a runaway loop, not a daily allowance.
+    if (this.analysesToday() >= (this.cfg.maxAnalysesPerDay ?? 400)) {
+      this.log.warn(this.name, 'daily analysis backstop reached — this should not happen normally');
+      return false;
+    }
     return this.bus.read([SIG_NEWS], 1).length > 0;
   }
 

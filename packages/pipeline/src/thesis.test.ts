@@ -75,12 +75,21 @@ describe('proposeThesis', () => {
     expect(out.ok).toBe(false);
   });
 
-  it('stands down when the budget forbids entries', async () => {
+  it('proposes however much has been spent', async () => {
     const b = budget();
-    b.record({ agent: 't', model: 'sonnet', tokensIn: 1, tokensOut: 1, costUsd: '90', latencyMs: 1, ok: true });
+    b.record({ agent: 't', model: 'sonnet', tokensIn: 1, tokensOut: 1, costUsd: '9999', latencyMs: 1, ok: true });
+    const out = await proposeThesis(evidence, {
+      budget: b, log, ask: reply(JSON.stringify(thesis())),
+    });
+    expect(out.ok).toBe(true);
+  });
+
+  it('stands down while a plan usage limit is in force', async () => {
+    const b = budget();
+    b.pause(Date.now() + 600_000, 'usage limit');
     const out = await proposeThesis(evidence, { budget: b, log, ask: reply('{}') });
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.reason).toContain('budget tier');
+    if (!out.ok) expect(out.reason).toContain('paused');
   });
 
   it('charges the budget for a call that threw', async () => {

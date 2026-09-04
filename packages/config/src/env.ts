@@ -116,10 +116,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   // How many NEW entries per day. Bounds churn and model spend, which the
   // position cap alone does not.
   maxTradesPerDay: num(env, 'MAX_TRADES_PER_DAY', 5, 1, 100, true),
-  // Analyst/challenger pairs per day. The main cost control: this is the only
-  // agent that can spend without bound, since every other one is either
-  // arithmetic or reads a fixed-size batch.
-  maxAnalysesPerDay: num(env, 'MAX_ANALYSES_PER_DAY', 12, 1, 200, true),
+  // Analyst/challenger pairs per day. A runaway-loop backstop, not a budget:
+  // spend is not the constraint, and a cap of 12 spent itself on restarts
+  // before the market even opened, then stood the whole pipeline down for the
+  // rest of the day. Set it far above any sane day's work.
+  maxAnalysesPerDay: num(env, 'MAX_ANALYSES_PER_DAY', 400, 1, 5000, true),
   // Fraction of equity per trade BEFORE debate strength and regime scaling.
   baseSizePct: num(env, 'BASE_SIZE_PCT', 0.03, 0.001, 0.2),
   // Measured: haiku ~$0.003/call, sonnet ~$0.05 even warm. Cheap model forms

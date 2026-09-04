@@ -867,7 +867,9 @@ function renderBalances(s) {
     `${money(b.longNotional)} long · ${money(b.shortNotional)} short`;
 
   $('c-spend').textContent = cost(s.budget.spent);
-  $('c-spend-sub').textContent = `of $${s.budget.cap} · tier ${s.budget.tier}`;
+  // Spend is a yardstick, not a wallet: Claude Code shares the plan allowance
+  // with ordinary chat, so this says what the agents cost, not what is left.
+  $('c-spend-sub').textContent = `API-equivalent · tier ${s.budget.tier} (reporting only)`;
 
   const n = (id, v) => { const el = $(id); if (el) el.textContent = v ? String(v) : ''; };
   n('n-decisions', (s.decisions || []).length);
@@ -980,6 +982,11 @@ function render(s) {
     bar.hidden = false;
     bar.innerHTML = '<b>HALTED.</b> The kill switch is engaged: no new orders will be sent on any venue. ' +
       'Exits, stops and the guardians keep running. Press the kill switch again to resume.';
+  } else if (s.budget && s.budget.pausedUntil && Date.parse(s.budget.pausedUntil) > Date.now()) {
+    bar.hidden = false;
+    bar.innerHTML = '<b>Plan usage limit reached.</b> The agents are backed off until ' +
+      esc(when(s.budget.pausedUntil)) + ' IST. Exits, stops and the kill switch are unaffected — ' +
+      'they never needed the model.';
   } else if (s.autonomy !== 'AUTO') {
     bar.hidden = false;
     bar.innerHTML = '<b>SHADOW mode — no orders are being placed.</b> ' +

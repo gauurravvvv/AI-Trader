@@ -142,10 +142,17 @@ describe('ReflectorAgent', () => {
     expect((db.prepare('SELECT source FROM lessons').get() as { source: string }).source).toBe('news');
   });
 
-  it('stands down when the budget tightens — understanding the past is discretionary', () => {
+  it('keeps reflecting however much has been spent', () => {
     closeTrade('NVDA', '100', '5');
     const d = deps();
-    d.budget.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '75', latencyMs: 1, ok: true });
+    d.budget.record({ agent: 't', model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '9999', latencyMs: 1, ok: true });
+    expect(new ReflectorAgent(d).shouldRun()).toBe(true);
+  });
+
+  it('stands down while a plan usage limit is in force', () => {
+    closeTrade('NVDA', '100', '5');
+    const d = deps();
+    d.budget.pause(Date.now() + 600_000, 'usage limit');
     expect(new ReflectorAgent(d).shouldRun()).toBe(false);
   });
 

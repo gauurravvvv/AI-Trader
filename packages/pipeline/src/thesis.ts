@@ -156,13 +156,18 @@ async function call<T>(
   kind: 'discretionary' | 'entry',
 ): Promise<Outcome<T>> {
   if (!deps.budget.allows(kind)) {
-    return { ok: false, reason: `budget tier ${deps.budget.tier()}` };
+    return { ok: false, reason: `paused until ${String(deps.budget.pausedUntil())} (plan usage limit)` };
   }
   let result;
   try {
     result = await (deps.ask ?? askClaude)(prompt, { model, agent });
   } catch (err) {
     const msg = err instanceof ClaudeError ? `${err.code}: ${err.message}` : String(err);
+    // A plan usage limit is not a bad call, it is the ceiling arriving. Park
+    // every agent until it lifts rather than burning retries against it.
+    if (err instanceof ClaudeError && err.code === 'USAGE_LIMIT') {
+      deps.budget.pause(Date.now() + (err.retryAfterMs ?? 900_000), err.message);
+    }
     deps.log.error(agent, msg);
     deps.budget.record({
       agent, model, tokensIn: Math.ceil(prompt.length / 4), tokensOut: 0,
