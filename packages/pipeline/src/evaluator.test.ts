@@ -179,3 +179,94 @@ describe('closedTrades', () => {
     expect(closedTrades(db)).toHaveLength(1);
   });
 });
+
+// ── Random-entry control ────────────────────────────────────────────────────
+
+import { randomEntryControl, controlReport, seededRandom, type ControlTrade } from './evaluator.js';
+
+const window = (symbol: string, actualReturn: number): ControlTrade => ({
+  symbol, openedAt: '2026-09-01', closedAt: '2026-09-10', actualReturn,
+});
+
+/** Every random pick returns this much, so the control is exactly predictable. */
+const flat = (r: number) => () => Promise.resolve(r);
+
+describe('seededRandom', () => {
+  it('is reproducible — a control you can re-roll is not a control', () => {
+    const a = seededRandom(42);
+    const b = seededRandom(42);
+    expect([a(), a(), a()]).toEqual([b(), b(), b()]);
+  });
+
+  it('stays inside [0,1)', () => {
+    const r = seededRandom(7);
+    for (let i = 0; i < 200; i += 1) {
+      const v = r();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
+    }
+  });
+
+  it('produces different streams for different seeds', () => {
+    expect(seededRandom(1)()).not.toBe(seededRandom(2)());
+  });
+});
+
+describe('randomEntryControl', () => {
+  const universe = ['NVDA', 'AMD', 'INTC', 'MU'];
+  const many = (n: number, r: number): ControlTrade[] =>
+    Array.from({ length: n }, () => window('NVDA', r));
+
+  it('says our entries beat random when they did', async () => {
+    const c = await randomEntryControl(many(25, 0.06), universe, flat(0.01));
+    expect(c.strategyReturn).toBeCloseTo(0.06);
+    expect(c.meanReturn).toBeCloseTo(0.01);
+    expect(c.edgeOverRandom).toBeCloseTo(0.05);
+    expect(c.verdict).toBe('BEATS_RANDOM');
+  });
+
+  it('says so when a coin flip did just as well', async () => {
+    // A book that beats the index by holding high-beta names in a rally will
+    // beat SPY and tie with random. Only this comparison catches it.
+    const c = await randomEntryControl(many(25, 0.04), universe, flat(0.05));
+    expect(c.verdict).toBe('NO_BETTER_THAN_RANDOM');
+    expect(controlReport(c)).toContain('did');
+    expect(controlReport(c)).toContain('not adding');
+  });
+
+  it('refuses a verdict below the trade threshold', async () => {
+    const c = await randomEntryControl(many(5, 0.5), universe, flat(0));
+    expect(c.verdict).toBe('INSUFFICIENT_DATA');
+  });
+
+  it('takes several draws per window to damp one unlucky pick', async () => {
+    const seen: string[] = [];
+    await randomEntryControl(many(20, 0.01), universe, (s) => {
+      seen.push(s);
+      return Promise.resolve(0.01);
+    }, { draws: 4 });
+    expect(seen).toHaveLength(80);
+  });
+
+  it('skips a symbol with no price history rather than scoring it as zero', async () => {
+    const c = await randomEntryControl(
+      many(20, 0.05), universe,
+      (s) => Promise.resolve(s === 'NVDA' ? null : 0.02),
+    );
+    expect(c.samples).toBeLessThan(100);
+    expect(c.meanReturn).toBeCloseTo(0.02);
+  });
+
+  it('is reproducible for the same seed', async () => {
+    const run = (): Promise<{ meanReturn: number }> =>
+      randomEntryControl(many(20, 0.03), universe,
+        (s) => Promise.resolve(s === 'NVDA' ? 0.1 : 0.0),
+        { rand: seededRandom(99) });
+    expect((await run()).meanReturn).toBe((await run()).meanReturn);
+  });
+
+  it('handles an empty book and an empty universe', async () => {
+    expect((await randomEntryControl([], universe, flat(0))).verdict).toBe('INSUFFICIENT_DATA');
+    expect((await randomEntryControl(many(30, 0.1), [], flat(0))).verdict).toBe('INSUFFICIENT_DATA');
+  });
+});

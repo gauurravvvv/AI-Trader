@@ -17,6 +17,7 @@ import {
   PositionGuardianAgent,
   NewsScoutAgent,
   NewsTraderAgent,
+  ReflectorAgent,
   DailySummary,
   universeFor,
   type PipelineDeps,
@@ -191,6 +192,10 @@ orchestrator.register(
   new PositionGuardianAgent({ ...pipelineDeps, ledger, router: cryptoRouter }),
   50_000,
 );
+// Reads closed trades and records what to do differently. Alpha-aware: a +8%
+// trade in a +12% market is not a win, and scoring it as one would teach the
+// system to repeat whatever it did in a bull market.
+orchestrator.register(new ReflectorAgent({ ...pipelineDeps, prices }), 60_000);
 
 const dashboard = new Dashboard({
   db,

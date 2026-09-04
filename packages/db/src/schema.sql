@@ -173,3 +173,28 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_notif_pending ON notifications (status, id);
+
+-- What the Reflector concluded about a closed trade.
+--
+-- Stored rather than logged because the point is to accumulate: one lesson is
+-- an anecdote, forty grouped by category are a pattern worth changing a
+-- threshold over. `alpha_return` is the trade's return minus the benchmark's
+-- over the same window — a +8% trade in a +12% market is not a win, and
+-- scoring it as one is how a system learns exactly the wrong lesson.
+CREATE TABLE IF NOT EXISTS lessons (
+  id INTEGER PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  decision_id INTEGER REFERENCES decisions(id),
+  source TEXT,                              -- earnings | news
+  raw_return REAL NOT NULL,
+  benchmark_return REAL NOT NULL,
+  alpha_return REAL NOT NULL,
+  verdict TEXT NOT NULL,                    -- ALPHA_WIN|ALPHA_LOSS|MARKET_CARRIED|MARKET_MASKED
+  category TEXT,                            -- free-form, grouped in the report
+  lesson TEXT NOT NULL,
+  confidence INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (decision_id)                      -- one lesson per trade, idempotent
+);
+CREATE INDEX IF NOT EXISTS idx_lessons_category ON lessons (category, created_at DESC);

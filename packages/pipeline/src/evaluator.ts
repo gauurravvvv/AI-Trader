@@ -281,3 +281,121 @@ export function performanceReport(
   }
   return lines.join('\n');
 }
+
+/**
+ * Deterministic PRNG (mulberry32).
+ *
+ * Seeded on purpose: a control benchmark that changes every time you look at it
+ * cannot be argued with, and "run it again until it flatters us" is exactly the
+ * failure mode a control exists to prevent.
+ */
+export function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export interface RandomControl {
+  /** Mean return of the random book, as a fraction. */
+  meanReturn: number;
+  /** Mean return of the real book over the same windows. */
+  strategyReturn: number;
+  /** Strategy minus random. Negative means coin-flip entries did better. */
+  edgeOverRandom: number;
+  samples: number;
+  verdict: 'BEATS_RANDOM' | 'NO_BETTER_THAN_RANDOM' | 'INSUFFICIENT_DATA';
+}
+
+export interface ControlTrade {
+  symbol: string;
+  openedAt: string;
+  closedAt: string;
+  /** Realised return of the actual trade, as a fraction. */
+  actualReturn: number;
+}
+
+/**
+ * Compare real entries against random ones over the same windows.
+ *
+ * This is the control the buy-and-hold benchmark cannot provide. Beating SPY
+ * tells you the book made money; beating a random pick from the same universe
+ * held for the same days tells you the *selection* did something. A strategy
+ * that beats the index because it happened to hold high-beta names in a rally
+ * will beat SPY and tie with random, and only the second comparison says so.
+ *
+ * `draws` repeats each window with different symbols to damp the variance of a
+ * single unlucky pick.
+ */
+export async function randomEntryControl(
+  trades: ControlTrade[],
+  universe: string[],
+  returnFor: (symbol: string, openedAt: string, closedAt: string) => Promise<number | null>,
+  opts: { rand?: () => number; draws?: number; minTrades?: number } = {},
+): Promise<RandomControl> {
+  const rand = opts.rand ?? seededRandom(20260904);
+  const draws = opts.draws ?? 5;
+  const minTrades = opts.minTrades ?? 20;
+
+  if (trades.length === 0 || universe.length === 0) {
+    return {
+      meanReturn: 0, strategyReturn: 0, edgeOverRandom: 0, samples: 0,
+      verdict: 'INSUFFICIENT_DATA',
+    };
+  }
+
+  const randomReturns: number[] = [];
+  for (const t of trades) {
+    for (let d = 0; d < draws; d += 1) {
+      const pick = universe[Math.floor(rand() * universe.length)];
+      if (pick === undefined) continue;
+      const r = await returnFor(pick, t.openedAt, t.closedAt);
+      if (r !== null && Number.isFinite(r)) randomReturns.push(r);
+    }
+  }
+
+  const mean = (xs: number[]): number =>
+    xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  const meanReturn = mean(randomReturns);
+  const strategyReturn = mean(trades.map((t) => t.actualReturn));
+  const edgeOverRandom = strategyReturn - meanReturn;
+
+  return {
+    meanReturn,
+    strategyReturn,
+    edgeOverRandom,
+    samples: randomReturns.length,
+    verdict:
+      trades.length < minTrades || randomReturns.length === 0
+        ? 'INSUFFICIENT_DATA'
+        : edgeOverRandom > 0
+          ? 'BEATS_RANDOM'
+          : 'NO_BETTER_THAN_RANDOM',
+  };
+}
+
+export function controlReport(c: RandomControl): string {
+  const pct = (n: number): string => `${n >= 0 ? '+' : ''}${(n * 100).toFixed(2)}%`;
+  const lines = [
+    'VERSUS RANDOM ENTRIES',
+    `  Our entries:     ${pct(c.strategyReturn)}`,
+    `  Random entries:  ${pct(c.meanReturn)}  (${String(c.samples)} draws)`,
+    `  Edge:            ${pct(c.edgeOverRandom)}`,
+    `  Verdict:         ${c.verdict}`,
+  ];
+  if (c.verdict === 'NO_BETTER_THAN_RANDOM') {
+    lines.push(
+      '',
+      '  Picking at random from the same universe, held for the same days, did',
+      '  as well or better. Whatever the agents are selecting on is not adding',
+      '  anything yet. This is the comparison a rising market cannot hide.',
+    );
+  } else if (c.verdict === 'INSUFFICIENT_DATA') {
+    lines.push('', '  Not enough closed trades for the control to mean anything.');
+  }
+  return lines.join('\n');
+}
