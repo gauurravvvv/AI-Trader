@@ -85,3 +85,73 @@ describe('Dashboard HTTP', () => {
     expect(isHalted(db)).toBe(true);
   }, 15_000);
 });
+
+describe('panels that were collecting data but showing none', () => {
+  it('lists every venue, not just the first', () => {
+    const multi = new Dashboard({
+      db, port: PORT + 1, monthlyBudgetUsd: 100, autonomy: 'SHADOW',
+      venue: 'sim-us', venues: ['sim-us', 'sim-crypto', 'sim-india'],
+    });
+    expect(multi.snapshot()['venues']).toEqual(['sim-us', 'sim-crypto', 'sim-india']);
+    multi.stop();
+  });
+
+  it('falls back to the single venue when none are listed', () => {
+    expect(dash.snapshot()['venues']).toEqual(['sim']);
+  });
+
+  it('surfaces the Reflector’s lessons', () => {
+    db.prepare(
+      `INSERT INTO lessons (symbol, venue, source, raw_return, benchmark_return,
+                            alpha_return, verdict, category, lesson)
+       VALUES ('NVDA','sim-us','earnings', 0.08, 0.12, -0.04, 'MARKET_CARRIED',
+               'entered-after-the-move', 'The story was already priced.')`,
+    ).run();
+    const rows = dash.snapshot()['lessons'] as { verdict: string; alpha_pct: number }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.verdict).toBe('MARKET_CARRIED');
+    expect(rows[0]!.alpha_pct).toBe(-4);
+  });
+
+  it('shows a staged entry as rungs placed out of rungs planned', () => {
+    const dec = db.prepare(
+      `INSERT INTO decisions (symbol, market, venue, side) VALUES ('NVDA','US','sim-us','buy')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO execution_plans (decision_id, venue, symbol, side, rungs, placed_rungs, status)
+       VALUES (?, 'sim-us','NVDA','buy', ?, '[0]', 'ACTIVE')`,
+    ).run(dec.lastInsertRowid, JSON.stringify([{ index: 0 }, { index: 1 }, { index: 2 }]));
+    const rows = dash.snapshot()['plans'] as { total: number; placed: number }[];
+    expect(rows[0]).toMatchObject({ total: 3, placed: 1 });
+  });
+
+  it('does not blank the ladder panel on a malformed plan', () => {
+    const dec2 = db.prepare(
+      `INSERT INTO decisions (symbol, market, venue, side) VALUES ('X','US','sim-us','buy')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO execution_plans (decision_id, venue, symbol, side, rungs) VALUES (?, 'sim-us','X','buy','{bad')`,
+    ).run(dec2.lastInsertRowid);
+    const rows = dash.snapshot()['plans'] as { total: number }[];
+    expect(rows[0]!.total).toBe(0);
+  });
+
+  it('reads a clean reconciliation as agreed and a broken one as not', () => {
+    db.prepare(`INSERT INTO reconciliations (venue, matched, breaks) VALUES ('sim-us', 3, '[]')`).run();
+    db.prepare(
+      `INSERT INTO reconciliations (venue, matched, breaks) VALUES ('sim-us', 2, '[{"symbol":"NVDA"}]')`,
+    ).run();
+    const rows = dash.snapshot()['reconciliations'] as { ok: number }[];
+    expect(rows[0]!.ok).toBe(0);   // newest first: the break
+    expect(rows[1]!.ok).toBe(1);
+  });
+
+  it('shows the notification outbox including what has not sent', () => {
+    db.prepare(
+      `INSERT INTO notifications (kind, subject, body, status, attempts)
+       VALUES ('ORDER_FILLED','BUY 10 NVDA','body','pending', 2)`,
+    ).run();
+    const rows = dash.snapshot()['notifications'] as { kind: string; status: string }[];
+    expect(rows[0]).toMatchObject({ kind: 'ORDER_FILLED', status: 'pending' });
+  });
+});

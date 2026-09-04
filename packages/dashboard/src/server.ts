@@ -11,7 +11,10 @@ export interface DashboardDeps {
   port: number;
   monthlyBudgetUsd: number;
   autonomy: string;
+  /** Primary venue, kept for compatibility. */
   venue: string;
+  /** Every venue actually being traded. The header showed only the first. */
+  venues?: string[];
   onHaltChange?: (halted: boolean) => void;
 }
 
@@ -78,6 +81,7 @@ export class Dashboard {
       halted: isHalted(db),
       autonomy: this.deps.autonomy,
       venue: this.deps.venue,
+      venues: this.deps.venues ?? [this.deps.venue],
       budget: {
         spent: budget?.spent_usd ?? '0',
         cap: this.deps.monthlyBudgetUsd,
@@ -142,6 +146,39 @@ export class Dashboard {
       }),
       performance: this.performance(),
       equity: equityCurve(this.deps.db),
+      // Everything below was being collected and never shown. An agent whose
+      // output is invisible may as well not be running.
+      lessons: q(
+        `SELECT symbol, source, verdict, category, lesson,
+                ROUND(alpha_return * 100, 2) alpha_pct, created_at
+           FROM lessons ORDER BY id DESC LIMIT 20`,
+      ),
+      plans: q(
+        `SELECT p.id, p.symbol, p.venue, p.side, p.status, p.abandon_reason,
+                p.rungs, p.placed_rungs, p.updated_at
+           FROM execution_plans p ORDER BY p.id DESC LIMIT 20`,
+      ).map((r) => {
+        const row = r as { rungs: string; placed_rungs: string } & Record<string, unknown>;
+        let total = 0;
+        let placed = 0;
+        try {
+          total = (JSON.parse(row.rungs) as unknown[]).length;
+          placed = (JSON.parse(row.placed_rungs) as unknown[]).length;
+        } catch {
+          /* a malformed plan must not blank the panel */
+        }
+        return { ...row, rungs: undefined, placed_rungs: undefined, total, placed };
+      }),
+      reconciliations: q(
+        // A sweep with an empty breaks array agreed; there is no `ok` column.
+        `SELECT venue, matched, breaks, ran_at AS created_at,
+                CASE WHEN breaks IN ('[]','') THEN 1 ELSE 0 END AS ok
+           FROM reconciliations ORDER BY id DESC LIMIT 10`,
+      ),
+      notifications: q(
+        `SELECT kind, subject, status, attempts, created_at, sent_at
+           FROM notifications ORDER BY id DESC LIMIT 20`,
+      ),
       llmCalls: q(
         `SELECT agent, model, tokens_in, tokens_out, cost_usd, latency_ms, ok, created_at
          FROM llm_calls ORDER BY id DESC LIMIT 30`,

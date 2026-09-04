@@ -15,6 +15,13 @@
     --ink3:#7E8C84; --rule:#2E3B35; --rule2:#232E29; --accent:#7FB2CE;
     --flag:#D98B84; --ok:#6FB98A; --warn:#D8B96A;
   }}
+  /* The toggle has to win in BOTH directions: following the OS was the only
+     option before, so a dark-desktop user could not read this in daylight. */
+  :root[data-theme=dark]{
+    --paper:#131A17; --bar:#1B2521; --sunk:#182120; --ink:#E4EAE2; --ink2:#A9B5AD;
+    --ink3:#7E8C84; --rule:#2E3B35; --rule2:#232E29; --accent:#7FB2CE;
+    --flag:#D98B84; --ok:#6FB98A; --warn:#D8B96A;
+  }
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);
     font:400 14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif}
@@ -49,6 +56,9 @@
   td.num,th.num{text-align:right}
   .muted{color:var(--ink3)}
   .pos{color:var(--ok)} .neg{color:var(--flag)} .warnc{color:var(--warn)}
+  .notice{margin:0;padding:.7rem 1.25rem;border-bottom:1px solid var(--rule2);
+    background:var(--sunk);color:var(--ink2);font-size:.84rem}
+  .notice b{color:var(--ink)}
   .pill{font-family:ui-monospace,monospace;font-size:.62rem;padding:.1rem .35rem;
     border:1px solid currentColor;border-radius:2px;white-space:nowrap}
   .gauge{height:8px;background:var(--sunk);border:1px solid var(--rule);border-radius:2px;
@@ -72,8 +82,11 @@
   <span class="tag" id="venue">—</span>
   <span class="spacer"></span>
   <span class="mono muted" id="clock"></span>
-  <button id="halt">Kill switch</button>
+  <button id="theme" title="Light / dark / follow the system">◐ Theme</button>
+  <button id="halt" title="Stop all new orders immediately. Exits and stops keep working.">Kill switch</button>
 </header>
+
+<div id="modebar" class="notice" hidden></div>
 
 <div class="grid">
   <section>
@@ -154,6 +167,40 @@
       <thead><tr><th>Symbol</th><th>Category</th><th class="num">Dir</th><th class="num">Score</th>
         <th>Headline</th><th>Why</th><th>Acted on</th></tr></thead>
       <tbody id="news"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Staged entries — the ladder</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Symbol</th><th>Venue</th><th>Side</th>
+        <th class="num">Rungs placed</th><th>Status</th><th>Why it stopped</th><th>Updated</th></tr></thead>
+      <tbody id="plans"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Lessons — what the Reflector concluded</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th>From</th><th>Verdict</th><th class="num">Alpha</th>
+        <th>Category</th><th>Lesson</th></tr></thead>
+      <tbody id="lessons"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Notifications</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Kind</th><th>Subject</th><th>Status</th><th>When</th></tr></thead>
+      <tbody id="notifications"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Reconciliation — ledger vs venue</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Venue</th><th>Result</th><th>Breaks</th><th>When</th></tr></thead>
+      <tbody id="recons"></tbody>
     </table></div>
   </section>
 
@@ -271,11 +318,59 @@ function drawEquity(points) {
     `· ${points.length} fills · last ${last.equity.toFixed(2)} · max drawdown ${maxDd.toFixed(2)}`;
 }
 
+/**
+ * Light / dark / follow the system, persisted.
+ *
+ * "System" is a real third state, not the absence of a choice: with no stamp on
+ * the root element the CSS media query decides, which is what most people want.
+ * The other two exist because a dark-desktop user could not read this page in
+ * daylight, and there was no way to override it.
+ */
+const THEMES = ['system', 'light', 'dark'];
+function applyTheme(t) {
+  if (t === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  const label = { system: '◐ System', light: '☀ Light', dark: '☾ Dark' };
+  $('theme').textContent = label[t];
+  try { localStorage.setItem('aegis-theme', t); } catch { /* private mode */ }
+}
+function initTheme() {
+  let t = 'system';
+  try { t = localStorage.getItem('aegis-theme') || 'system'; } catch { /* ignore */ }
+  if (!THEMES.includes(t)) t = 'system';
+  applyTheme(t);
+  $('theme').onclick = () => {
+    let cur = 'system';
+    try { cur = localStorage.getItem('aegis-theme') || 'system'; } catch { /* ignore */ }
+    applyTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+  };
+}
+initTheme();
+
 function render(s) {
   $('autonomy').textContent = s.autonomy;
   $('autonomy').className = 'tag ' + (s.autonomy === 'AUTO' ? 'auto' : 'shadow');
-  $('venue').textContent = s.venue;
+  const venues = s.venues && s.venues.length ? s.venues : [s.venue];
+  $('venue').textContent = venues.join(' · ');
   $('venue').className = 'tag';
+
+  // The most common question this page has to answer is "why has it not
+  // traded?", and until now the page did not answer it anywhere.
+  const bar = $('modebar');
+  if (s.halted) {
+    bar.hidden = false;
+    bar.innerHTML = '<b>HALTED.</b> The kill switch is engaged: no new orders will be sent on any venue. ' +
+      'Exits, stops and the guardians keep running. Press the kill switch again to resume.';
+  } else if (s.autonomy !== 'AUTO') {
+    bar.hidden = false;
+    bar.innerHTML = '<b>SHADOW mode — no orders are being placed.</b> ' +
+      'Every agent runs and every decision is recorded, but nothing reaches a venue, so ' +
+      'Positions, Orders and Fills stay empty by design. ' +
+      'Restart with <code>--autonomy AUTO</code> to trade paper money.';
+  } else {
+    bar.hidden = false;
+    bar.innerHTML = '<b>AUTO — placing simulated orders.</b> Paper money only; there is no path to a funded account.';
+  }
   $('halt').textContent = s.halted ? 'HALTED — resume' : 'Kill switch';
 
   const pct = Math.min(100, (Number(s.budget.spent) / s.budget.cap) * 100);
@@ -320,6 +415,39 @@ function render(s) {
       <td class="muted">${esc(String(r.why).slice(0, 70))}</td>
       <td class="muted">${acted}</td></tr>`;
   }, 7);
+
+  rows($('plans'), s.plans, (r) => {
+    const cls = r.status === 'COMPLETE' ? 'pos' : r.status === 'ABANDONED' ? 'warnc' : '';
+    return `<tr><td class="num muted">${r.id}</td><td><b>${esc(r.symbol)}</b></td>
+      <td class="muted">${esc(r.venue)}</td><td>${esc(r.side)}</td>
+      <td class="num">${r.placed} / ${r.total}</td>
+      <td class="${cls}">${esc(r.status)}</td>
+      <td class="muted">${esc(r.abandon_reason || '—')}</td>
+      <td class="mono muted">${when(r.updated_at)}</td></tr>`;
+  }, 8);
+
+  rows($('lessons'), s.lessons, (r) => {
+    const good = r.verdict === 'ALPHA_WIN' || r.verdict === 'MARKET_MASKED';
+    return `<tr><td><b>${esc(r.symbol)}</b></td><td class="muted">${esc(r.source || '—')}</td>
+      <td class="${good ? 'pos' : 'neg'}">${esc(r.verdict)}</td>
+      <td class="num ${r.alpha_pct >= 0 ? 'pos' : 'neg'}">${r.alpha_pct > 0 ? '+' : ''}${r.alpha_pct}%</td>
+      <td><span class="pill">${esc(r.category || '—')}</span></td>
+      <td class="muted">${esc(String(r.lesson).slice(0, 130))}</td></tr>`;
+  }, 6);
+
+  rows($('notifications'), s.notifications, (r) => {
+    const cls = r.status === 'sent' ? 'pos' : r.status === 'dead' ? 'neg' : 'warnc';
+    return `<tr><td><span class="pill">${esc(r.kind)}</span></td>
+      <td class="muted">${esc(String(r.subject).slice(0, 70))}</td>
+      <td class="${cls}">${esc(r.status)}${r.attempts ? ' (' + r.attempts + ')' : ''}</td>
+      <td class="mono muted">${when(r.created_at)}</td></tr>`;
+  }, 4);
+
+  rows($('recons'), s.reconciliations, (r) =>
+    `<tr><td>${esc(r.venue)}</td>
+     <td class="${r.ok ? 'pos' : 'neg'}">${r.ok ? 'agreed' : 'BREAK'}</td>
+     <td class="muted">${esc(String(r.breaks || '').slice(0, 60))}</td>
+     <td class="mono muted">${when(r.created_at)}</td></tr>`, 4);
 
   rows($('positions'), s.positions, (r) => {
     const pnl = Number(r.realised_pnl);

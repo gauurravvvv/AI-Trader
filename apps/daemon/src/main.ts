@@ -247,6 +247,7 @@ const dashboard = new Dashboard({
   monthlyBudgetUsd: cfg.monthlyBudgetUsd,
   autonomy,
   venue: adapter.venue,
+  venues: venues.map((v) => v.router.venue),
   onHaltChange: (h) => {
     log.warn('dashboard', h ? 'KILL SWITCH ENGAGED from the dashboard' : 'halt cleared');
     notifier.enqueue({
