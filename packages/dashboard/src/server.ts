@@ -203,6 +203,19 @@ export class Dashboard {
       res.end('not found');
     });
 
+    // Without this, a port collision surfaces as an unhandled 'error' event:
+    // the process dies printing a node:net stack trace that says nothing about
+    // what is wrong. A busy port is an operator problem and deserves an
+    // operator's message.
+    this.server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        throw new Error(
+          `dashboard port ${String(this.deps.port)} is already in use — ` +
+            'something else is listening there. Set DASHBOARD_PORT to a free port.',
+        );
+      }
+      throw err;
+    });
     this.server.listen(this.deps.port);
   }
 

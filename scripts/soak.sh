@@ -73,11 +73,13 @@ trap cleanup EXIT INT TERM
 } >> "$LOG"
 
 RESTARTS=0
+QUICK=0
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   echo "[soak] launching daemon $(date -u +%FT%TZ) (restart #$RESTARTS)" >> "$LOG"
   # Backgrounded and waited on, rather than run in the foreground, so the trap
   # can reach the child: a foreground child swallows the signal and the soak
   # cannot shut it down cleanly.
+  STARTED_AT=$(date +%s)
   node --env-file-if-exists=.env --import tsx apps/daemon/src/main.ts "${EXTRA[@]:-}" >> "$LOG" 2>&1 &
   CHILD=$!
   # `|| true` so a non-zero exit is a restart, not the end of the soak: an
@@ -87,8 +89,29 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
 
   [ "$STOPPING" -eq 1 ] && break
   [ "$(date +%s)" -ge "$DEADLINE" ] && break
+
+  # A daemon that dies within seconds of starting is misconfigured, not
+  # unlucky. Restarting it for three days burns credit on a loop that will
+  # never work — the first version of this script did exactly that against a
+  # busy port, five times, before anyone noticed.
+  RAN=$(( $(date +%s) - STARTED_AT ))
+  if [ "$RAN" -lt 20 ]; then
+    QUICK=$((QUICK + 1))
+  else
+    QUICK=0
+  fi
+  if [ "$QUICK" -ge 3 ]; then
+    {
+      echo "[soak] daemon died within 20s, three times running — this is a"
+      echo "[soak] configuration problem, not a crash. Stopping rather than"
+      echo "[soak] looping for the rest of the window. Last error:"
+      tail -20 "$LOG" | grep -iE "error|throw" | tail -3
+    } >> "$LOG"
+    exit 1
+  fi
+
   RESTARTS=$((RESTARTS + 1))
-  echo "[soak] daemon exited; restarting in 30s" >> "$LOG"
+  echo "[soak] daemon exited after ${RAN}s; restarting in 30s" >> "$LOG"
   sleep 30
 done
 

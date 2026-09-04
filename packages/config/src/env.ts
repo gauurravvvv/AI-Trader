@@ -15,6 +15,7 @@ export interface AppConfig {
   claudeConcurrency: number;
   sueThreshold: number;
   newsIntervalMin: number;
+  maxFilingAgeDays: number;
   dashboardPort: number;
 }
 
@@ -85,6 +86,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   // Minutes between news sweeps. The single biggest lever on monthly spend:
   // a measured tick costs ~$0.0146, so halving this doubles the news bill.
   newsIntervalMin: num(env, 'NEWS_INTERVAL_MIN', 20, 2, 720, true),
+  // Filings older than this are not read. Drift is concentrated in the days
+  // after a release; reading a two-month-old filing costs sonnet money for an
+  // edge that was priced long ago.
+  maxFilingAgeDays: num(env, 'MAX_FILING_AGE_DAYS', 10, 1, 120, true),
     dashboardPort: num(env, 'DASHBOARD_PORT', 3777, 1024, 65_535, true),
   };
 }

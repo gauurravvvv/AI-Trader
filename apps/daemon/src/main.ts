@@ -186,6 +186,7 @@ const pipelineDeps: PipelineDeps = {
   universe: universeFor(['US']),
   sueThreshold: cfg.sueThreshold,
   auditFloor: cfg.auditFloor,
+  maxFilingAgeDays: cfg.maxFilingAgeDays,
   autonomy,
   notify: raise,
 };

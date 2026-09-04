@@ -387,3 +387,63 @@ describe('provenance', () => {
       .toEqual({ c: 3 });
   });
 });
+
+describe('filing recency', () => {
+  const daysAgo = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it('reads a filing from the last few days', async () => {
+    const p = deps({ edgar: fakeEdgar([{ accessionNo: 'fresh', filedAt: daysAgo(2) }], FILING_TEXT) });
+    await new EdgarPollerAgent(p).execute();
+    expect(bus.read(['filing_8k'], 10)).toHaveLength(1);
+  });
+
+  it('skips a filing whose drift window has closed', async () => {
+    // The first real run found eleven filings between 31 and 86 days old and
+    // read every one of them on sonnet. The surprise was priced months earlier.
+    const p = deps({ edgar: fakeEdgar([{ accessionNo: 'stale', filedAt: daysAgo(60) }], FILING_TEXT) });
+    await new EdgarPollerAgent(p).execute();
+    expect(bus.read(['filing_8k'], 10)).toHaveLength(0);
+    expect(lines.join('\n')).toContain('already priced');
+  });
+
+  it('records the skip rather than discarding it silently', async () => {
+    const p = deps({ edgar: fakeEdgar([{ accessionNo: 'stale', filedAt: daysAgo(60) }], FILING_TEXT) });
+    await new EdgarPollerAgent(p).execute();
+    const skipped = db.prepare(
+      `SELECT COUNT(*) c FROM agent_signals WHERE signal_type = 'filing_8k_stale'`,
+    ).get();
+    expect(skipped).toEqual({ c: 1 });
+  });
+
+  it('does not re-examine a skipped filing after a restart', async () => {
+    // A filing that is too old today will only get older; rechecking it every
+    // five minutes forever is pointless.
+    const edgar = fakeEdgar([{ accessionNo: 'stale', filedAt: daysAgo(60) }], FILING_TEXT);
+    await new EdgarPollerAgent(deps({ edgar })).execute();
+    await new EdgarPollerAgent(deps({ edgar })).execute();
+    const n = db.prepare(
+      `SELECT COUNT(*) c FROM agent_signals WHERE signal_type = 'filing_8k_stale'`,
+    ).get();
+    expect(n).toEqual({ c: 1 });
+  });
+
+  it('honours a configured window', async () => {
+    const filedAt = daysAgo(20);
+    await new EdgarPollerAgent(deps({
+      edgar: fakeEdgar([{ accessionNo: 'a', filedAt }], FILING_TEXT), maxFilingAgeDays: 30,
+    })).execute();
+    expect(bus.read(['filing_8k'], 10)).toHaveLength(1);
+  });
+
+  it('spends nothing on a stale filing — the reader never sees it', async () => {
+    const s = scriptedAsk([STRONG_READ, audit(90)]);
+    const p = deps({
+      edgar: fakeEdgar([{ accessionNo: 'stale', filedAt: daysAgo(60) }], FILING_TEXT),
+      ask: s.ask,
+    });
+    await new EdgarPollerAgent(p).execute();
+    await new EarningsReaderAgent(p).execute();
+    expect(s.calls).toHaveLength(0);
+    expect(p.budget.spent()).toBe('0');
+  });
+});

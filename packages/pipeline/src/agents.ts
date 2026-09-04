@@ -22,6 +22,16 @@ export interface PipelineDeps extends AgentDeps {
   universe: UniverseEntry[];
   sueThreshold: number;
   auditFloor: number;
+  /**
+   * Filings older than this are not read.
+   *
+   * Post-earnings drift is concentrated in the days after the release; by the
+   * time a filing is weeks old the surprise is priced and there is nothing left
+   * to trade. Without this gate a fresh database reads whatever the most recent
+   * 8-K happens to be for each name — on the first real run that was eleven
+   * filings between 31 and 86 days old, at sonnet prices, for no possible edge.
+   */
+  maxFilingAgeDays?: number;
   /** SHADOW logs the decision and places nothing. */
   autonomy: 'SHADOW' | 'AUTO';
   /** Defaults to the real Claude CLI. Overridden in tests. */
@@ -41,6 +51,8 @@ export type NotifyLike =
 
 const SIG_FILING = 'filing_8k';
 const SIG_SCORED = 'earnings_scored';
+/** Recorded, not read: proof the poller saw a filing and chose to skip it. */
+const SIG_STALE = 'filing_8k_stale';
 
 /**
  * Watches EDGAR for new earnings 8-Ks across the universe.
@@ -54,9 +66,11 @@ export class EdgarPollerAgent extends BaseAgent {
   constructor(private readonly p: PipelineDeps) {
     super('edgar-poller', { intervalMs: 5 * 60 * 1000 }, p);
     // Seed from the database so a restart does not replay history.
+    // Seed from both: a filing we deliberately skipped must not be re-examined
+    // on every restart, or the skip is only ever temporary.
     const rows = this.db
-      .prepare(`SELECT data FROM agent_signals WHERE signal_type = ?`)
-      .all(SIG_FILING) as { data: string }[];
+      .prepare(`SELECT data FROM agent_signals WHERE signal_type IN (?, ?)`)
+      .all(SIG_FILING, SIG_STALE) as { data: string }[];
     for (const r of rows) {
       try {
         const d = JSON.parse(r.data) as { accessionNo?: string };
@@ -69,12 +83,27 @@ export class EdgarPollerAgent extends BaseAgent {
 
   async execute(): Promise<void> {
     const watch = edgarWatchable(this.p.universe);
+    const maxAgeDays = this.p.maxFilingAgeDays ?? 10;
+    const cutoff = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
     let found = 0;
+    let stale = 0;
     for (const entry of watch) {
       const filings = await this.p.edgar.recentEarnings8K(entry.cik);
-      const fresh = filings.filter((f) => !this.seen.has(f.accessionNo)).slice(0, 1);
-      for (const f of fresh) {
+      const unseen = filings.filter((f) => !this.seen.has(f.accessionNo)).slice(0, 1);
+      for (const f of unseen) {
+        // Mark it seen either way: a filing that is too old today will only get
+        // older, and re-checking it every five minutes forever is pointless.
         this.seen.add(f.accessionNo);
+        if (f.filedAt < cutoff) {
+          this.bus.emit({
+            agent: this.name,
+            signalType: SIG_STALE,
+            symbol: entry.symbol,
+            data: { accessionNo: f.accessionNo, filedAt: f.filedAt },
+          });
+          stale += 1;
+          continue;
+        }
         this.bus.emit({
           agent: this.name,
           signalType: SIG_FILING,
@@ -84,6 +113,12 @@ export class EdgarPollerAgent extends BaseAgent {
         this.log.event(this.name, `8-K ${entry.symbol}  ${f.accessionNo}  ${f.filedAt.slice(0, 16)}`);
         found += 1;
       }
+    }
+    if (stale > 0) {
+      this.log.event(
+        this.name,
+        `skipped ${String(stale)} filing(s) older than ${String(maxAgeDays)}d — the drift is already priced`,
+      );
     }
     if (found === 0) this.log.event(this.name, `swept ${String(watch.length)} filers, nothing new`);
   }
