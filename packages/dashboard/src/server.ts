@@ -88,9 +88,19 @@ export class Dashboard {
          FROM positions WHERE CAST(qty AS REAL) > 0 ORDER BY symbol`,
       ),
       decisions: q(
-        `SELECT id, symbol, side, sue_score, audit_score, audit_tier, status,
-                reject_reason, rationale, created_at
-         FROM decisions ORDER BY id DESC LIMIT 30`,
+        // Sources are folded in rather than fetched per row: the reason a trade
+        // was made is only reviewable next to the trade, and a decision built on
+        // a synthesised spread should say so where someone will see it.
+        `SELECT d.id, d.symbol, d.side, d.sue_score, d.audit_score, d.audit_tier,
+                d.status, d.reject_reason, d.rationale, d.created_at,
+                (SELECT GROUP_CONCAT(
+                   p.kind || ':' || p.source ||
+                   CASE WHEN p.reference IS NULL THEN '' ELSE ' ' || p.reference END ||
+                   CASE WHEN p.degraded = 1 THEN ' [DEGRADED]' ELSE '' END, '  ·  ')
+                   FROM provenance p WHERE p.decision_id = d.id) AS sources,
+                (SELECT COUNT(*) FROM provenance p
+                  WHERE p.decision_id = d.id AND p.degraded = 1) AS degraded
+         FROM decisions d ORDER BY d.id DESC LIMIT 30`,
       ),
       orders: q(
         `SELECT o.id, o.symbol, o.side, o.qty, o.status, o.created_at, o.reject_reason

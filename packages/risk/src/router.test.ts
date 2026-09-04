@@ -289,3 +289,67 @@ describe('day-trade counting', () => {
     expect(router.dayTradesLast5Days()).toBe(0);
   });
 });
+
+describe('partial fills', () => {
+  /** A thin name, so an ordinary order is large against volume and gets worked. */
+  const thin: PriceSource = {
+    quote: async (symbol: string): Promise<Quote> => ({
+      symbol, last: '100', bid: '99.95', ask: '100.05',
+      volume: '100000', at: new Date().toISOString(),
+    }),
+  };
+
+  function thinRouter(): { r: OrderRouter; l: Ledger } {
+    const l = new Ledger(db);
+    const a = new SimAdapter('alpaca-paper', 'US', thin, US_COSTS, '10000000', CONSTRAINTS, {
+      isOpen: () => true,
+    });
+    const r = new OrderRouter({ db, adapter: a, ledger: l });
+    r.start();
+    return { r, l };
+  }
+
+  it('marks the order partial until every slice has landed', async () => {
+    const { r } = thinRouter();
+    const id = newDecision();
+    await r.route({ decisionId: id, symbol: 'NVDA', side: 'buy', qty: '5000', price: '100' }, '100000000');
+    // Immediately after the first slice, before the rest are applied.
+    await new Promise((res) => setTimeout(res, 0));
+    const mid = db.prepare('SELECT status FROM orders WHERE decision_id = ?').get(id) as { status: string };
+    expect(['partial', 'filled']).toContain(mid.status);
+
+    await new Promise((res) => setTimeout(res, 40));
+    const end = db.prepare('SELECT status FROM orders WHERE decision_id = ?').get(id) as { status: string };
+    expect(end.status).toBe('filled');
+  });
+
+  it('accumulates every slice into the position', async () => {
+    const { r, l } = thinRouter();
+    await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '5000', price: '100' },
+      '100000000',
+    );
+    await new Promise((res) => setTimeout(res, 40));
+    expect(l.get('alpaca-paper', 'NVDA')!.qty).toBe('5000');
+  });
+
+  it('records one ledger fill per slice', async () => {
+    const { r } = thinRouter();
+    const id = newDecision();
+    await r.route({ decisionId: id, symbol: 'NVDA', side: 'buy', qty: '5000', price: '100' }, '100000000');
+    await new Promise((res) => setTimeout(res, 40));
+    const n = db.prepare(
+      `SELECT COUNT(*) c FROM fills f JOIN orders o ON o.id = f.order_id WHERE o.decision_id = ?`,
+    ).get(id) as { c: number };
+    expect(n.c).toBeGreaterThan(1);
+  });
+
+  it('still marks a small order filled in one step', async () => {
+    const { r } = thinRouter();
+    const id = newDecision();
+    await r.route({ decisionId: id, symbol: 'NVDA', side: 'buy', qty: '20', price: '100' }, '100000000');
+    await new Promise((res) => setTimeout(res, 40));
+    expect((db.prepare('SELECT status FROM orders WHERE decision_id = ?').get(id) as { status: string }).status)
+      .toBe('filled');
+  });
+});

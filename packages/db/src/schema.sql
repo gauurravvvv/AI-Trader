@@ -220,3 +220,24 @@ CREATE TABLE IF NOT EXISTS execution_plans (
   UNIQUE (decision_id)
 );
 CREATE INDEX IF NOT EXISTS idx_plans_active ON execution_plans (status, venue);
+
+-- Where each fact in a decision came from.
+--
+-- One row per source, rather than a JSON blob on `decisions`, so a source can
+-- be queried: "which decisions used a synthetic quote", "what did we read
+-- before we bought MU". A decision that cannot name its sources cannot be
+-- audited, and after the fact nobody remembers whether the spread was real.
+CREATE TABLE IF NOT EXISTS provenance (
+  id INTEGER PRIMARY KEY,
+  decision_id INTEGER NOT NULL REFERENCES decisions(id),
+  kind TEXT NOT NULL,              -- filing | consensus | quote | news | bars
+  source TEXT NOT NULL,            -- edgar | yahoo | ...
+  reference TEXT,                  -- accession no, URL, symbol
+  retrieved_at TEXT,               -- when WE fetched it
+  as_of TEXT,                      -- when the FACT was true
+  degraded INTEGER NOT NULL DEFAULT 0,  -- synthetic spread, stale cache, fallback basis
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_prov_decision ON provenance (decision_id);
+CREATE INDEX IF NOT EXISTS idx_prov_degraded ON provenance (degraded, kind);

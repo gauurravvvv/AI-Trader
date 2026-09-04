@@ -10,6 +10,7 @@ import type { OrderRouter } from '@aegis/risk';
 import { auditDecision } from './auditor.js';
 import { driftConditions } from './watch.js';
 import { planEntry, savePlan, markRungPlaced, abandonPlan } from './planner.js';
+import { recordProvenance } from './provenance.js';
 import { DRIFT_EXIT } from './guardian.js';
 import { edgarWatchable, type UniverseEntry } from './universe.js';
 
@@ -125,10 +126,12 @@ export class EarningsReaderAgent extends BaseAgent {
       // Numeric surprise from consensus — the filing never states it.
       const cons = await this.p.consensus.get(symbol);
       let numericSue: number | null = null;
+      let sueBasis: 'history' | 'fallback' | null = null;
       const last = cons?.history.at(-1);
       if (cons && last) {
         const st = standardisedSue(last.epsActual, last.epsEstimate, cons.history.slice(0, -1));
         numericSue = st.sue;
+        sueBasis = st.basis;
         this.log.event(
           'consensus',
           `${symbol} EPS ${String(last.epsActual)} vs est ${last.epsEstimate.toFixed(2)} → ${st.sue.toFixed(2)}σ (${st.basis})`,
@@ -194,7 +197,13 @@ export class EarningsReaderAgent extends BaseAgent {
         data: { sue: score.sue, audit: a.total, tier: a.tier, why: read.oneLineWhy },
       });
 
-      await this.propose(symbol, score.sue, a.total, a.tier, read.oneLineWhy, sig.id);
+      await this.propose(symbol, score.sue, a.total, a.tier, read.oneLineWhy, sig.id, {
+        accessionNo: d.accessionNo,
+        cik: d.cik,
+        filedAt: d.filedAt,
+        consensusAt: cons?.retrievedAt ?? null,
+        sueBasis,
+      });
     }
   }
 
@@ -206,6 +215,13 @@ export class EarningsReaderAgent extends BaseAgent {
     why: string,
     /** INV-2: every decision traces back to the filing signal that caused it. */
     sourceSignalId: number,
+    src: {
+      accessionNo: string;
+      cik: string;
+      filedAt: string;
+      consensusAt: string | null;
+      sueBasis: 'history' | 'fallback' | null;
+    },
   ): Promise<void> {
     const quote = await this.p.prices.quote(symbol);
     if (!quote) {
@@ -234,6 +250,30 @@ export class EarningsReaderAgent extends BaseAgent {
         sourceSignalId,
       );
     const decisionId = Number(ins.lastInsertRowid);
+
+    // Everything this decision was built from, including the parts that are
+    // weaker than they look. A synthetic spread or a fallback SUE basis is a
+    // real input and needs to be reviewable after the fact.
+    recordProvenance(this.db, decisionId, [
+      {
+        kind: 'filing', source: 'edgar',
+        reference: src.accessionNo, asOf: src.filedAt,
+        note: `CIK ${src.cik}`,
+      },
+      {
+        kind: 'consensus', source: 'yahoo',
+        reference: symbol,
+        retrievedAt: src.consensusAt ?? undefined,
+        degraded: src.sueBasis === 'fallback' || src.consensusAt === null,
+        note: src.sueBasis === null ? 'no consensus history' : `SUE basis: ${src.sueBasis}`,
+      },
+      {
+        kind: 'quote', source: 'yahoo',
+        reference: symbol, asOf: quote.at,
+        degraded: quote.synthetic === true,
+        note: quote.synthetic === true ? 'spread was synthesised, not quoted' : undefined,
+      },
+    ]);
 
     if (this.p.autonomy === 'SHADOW') {
       this.log.warn(

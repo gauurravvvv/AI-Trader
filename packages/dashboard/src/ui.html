@@ -332,7 +332,8 @@ function render(s) {
       <td class="num">${r.sue_score ?? '—'}</td><td class="num">${r.audit_score ?? '—'}</td>
       <td><span class="pill">${esc(r.audit_tier ?? '—')}</span></td>
       <td class="${cls}">${esc(r.status)}</td>
-      <td class="muted">${esc((r.reject_reason || r.rationale || '').slice(0, 110))}</td>
+      <td class="muted" title="${esc(r.sources || 'no sources recorded')}">
+        ${r.degraded ? '<span class="warnc" title="built on a synthesised or fallback input">⚠ </span>' : ''}${esc((r.reject_reason || r.rationale || '').slice(0, 108))}</td>
       <td class="mono muted">${when(r.created_at)}</td></tr>`;
   }, 9);
 

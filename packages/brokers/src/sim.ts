@@ -66,6 +66,47 @@ export const CRYPTO_COSTS: SimCosts = {
  * This is the default venue: it needs no signup, no API key, and no network,
  * so the whole system is runnable and testable end to end out of the box.
  */
+/**
+ * Split an order into slices when it is large relative to the bar's volume.
+ *
+ * A real order for a meaningful share of the day's volume does not fill at one
+ * price in one instant: it works through the book over minutes, and each slice
+ * pays a worse price than the last. Filling it whole at a single price is the
+ * most flattering assumption a simulator can make, and it is the one that makes
+ * position sizing look free.
+ *
+ * Below the threshold an order is one slice, which is both realistic and keeps
+ * the common case simple.
+ */
+export function sliceOrder(
+  qty: Decimal,
+  volume: Decimal,
+  maxParticipationPerSlice = 0.005,
+  maxSlices = 8,
+): Decimal[] {
+  if (qty.lte(0)) return [];
+  if (volume.lte(0)) return [qty];
+
+  const perSlice = volume.times(maxParticipationPerSlice);
+  if (perSlice.lte(0) || qty.lte(perSlice)) return [qty];
+
+  const wanted = qty.div(perSlice).ceil().toNumber();
+  const n = Math.min(wanted, maxSlices);
+  const base = qty.div(n).floor();
+
+  const slices: Decimal[] = [];
+  let placed = new Decimal(0);
+  for (let i = 0; i < n - 1; i += 1) {
+    if (base.lte(0)) break;
+    slices.push(base);
+    placed = placed.plus(base);
+  }
+  // The last slice takes the remainder, so no share is lost or invented.
+  const rest = qty.minus(placed);
+  if (rest.gt(0)) slices.push(rest);
+  return slices.length > 0 ? slices : [qty];
+}
+
 export class SimAdapter implements BrokerAdapter {
   readonly mode = 'paper' as const;
 
@@ -158,7 +199,16 @@ export class SimAdapter implements BrokerAdapter {
     }
 
     const qty = new Decimal(req.qty);
-    const price = this.fillPrice(q, req.side, qty);
+    // Each slice is priced on the cumulative quantity worked so far, so later
+    // slices pay for the impact the earlier ones already caused.
+    const slices = sliceOrder(qty, new Decimal(q.volume));
+    let worked = new Decimal(0);
+    const priced = slices.map((sliceQty) => {
+      worked = worked.plus(sliceQty);
+      return { qty: sliceQty, price: this.fillPrice(q, req.side, worked) };
+    });
+    const grossValue = priced.reduce((a, s) => a.plus(s.price.times(s.qty)), new Decimal(0));
+    const price = qty.gt(0) ? grossValue.div(qty) : new Decimal(0);
 
     // A limit order only fills if the effective price respects the limit.
     if (req.type === 'limit' && req.limitPrice !== undefined) {
@@ -212,20 +262,27 @@ export class SimAdapter implements BrokerAdapter {
       this.cash = this.cash.plus(notional).minus(fee);
     }
 
-    const fill: FillEvent = {
+    // One event per slice. The fee is apportioned by value so the parts sum to
+    // the whole, and each slice lands later than the last — a worked order takes
+    // time, and a ledger that sees them all at one instant has not modelled it.
+    const base = Date.now() + 300;
+    const fills: FillEvent[] = priced.map((s, i) => ({
       venueOrderId: order.venueOrderId,
       venueFillId: randomUUID(),
       clientOrderId: req.clientOrderId,
       symbol: req.symbol,
       side: req.side,
-      qty: req.qty,
-      price: price.toFixed(6),
-      fee: fee.toFixed(6),
+      qty: s.qty.toString(),
+      price: s.price.toFixed(6),
+      fee: grossValue.gt(0)
+        ? fee.times(s.price.times(s.qty)).div(grossValue).toFixed(6)
+        : '0',
       // Never the decision-time price: a real fill lands after a round trip.
-      filledAt: new Date(Date.now() + 300).toISOString(),
-    };
+      filledAt: new Date(base + i * 250).toISOString(),
+    }));
+
     queueMicrotask(() => {
-      for (const l of this.listeners) l(fill);
+      for (const f of fills) for (const l of this.listeners) l(f);
     });
 
     return order;

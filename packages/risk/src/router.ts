@@ -90,15 +90,21 @@ export class OrderRouter {
   start(): void {
     this.unsub = this.adapter.streamFills((f) => {
       const row = this.db
-        .prepare('SELECT id FROM orders WHERE client_order_id = ? AND venue = ?')
-        .get(f.clientOrderId, this.adapter.venue) as { id: number } | undefined;
+        .prepare('SELECT id, qty FROM orders WHERE client_order_id = ? AND venue = ?')
+        .get(f.clientOrderId, this.adapter.venue) as { id: number; qty: string } | undefined;
       if (!row) return; // a fill for an order we never placed — ignore, reconciler will catch it
       this.ledger.applyFill(f, row.id, this.adapter.venue);
+
+      // A large order is worked in slices, so the first fill is not the last.
+      // Marking the order 'filled' on slice one would report a 100-share order
+      // complete after 20 shares landed.
+      const done = this.db
+        .prepare('SELECT COALESCE(SUM(CAST(qty AS REAL)), 0) q FROM fills WHERE order_id = ?')
+        .get(row.id) as { q: number };
+      const complete = done.q >= Number(row.qty) - 1e-9;
       this.db
-        .prepare(
-          `UPDATE orders SET status = 'filled', venue_order_id = ? WHERE id = ?`,
-        )
-        .run(f.venueOrderId, row.id);
+        .prepare(`UPDATE orders SET status = ?, venue_order_id = ? WHERE id = ?`)
+        .run(complete ? 'filled' : 'partial', f.venueOrderId, row.id);
       this.deps.onFill?.(f);
     });
   }

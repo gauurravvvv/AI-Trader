@@ -74,3 +74,14 @@ describe.skipIf(!online)('YahooPriceSource live', () => {
     expect(await src.quote('ZZZZNOTREAL9')).toBeNull();
   }, 30_000);
 });
+
+describe('synthetic flag propagation', () => {
+  it('resolveSpread reports whether the spread was quoted or estimated', () => {
+    // A credible book: kept as-is.
+    expect(YahooPriceSource.resolveSpread(100, 99.99, 100.01).synthetic).toBe(false);
+    // The after-hours case: AAPL returned bid 324 / ask 329.98, a 1.84% spread.
+    expect(YahooPriceSource.resolveSpread(327, 324, 329.98).synthetic).toBe(true);
+    // No book at all.
+    expect(YahooPriceSource.resolveSpread(100, undefined, undefined).synthetic).toBe(true);
+  });
+});

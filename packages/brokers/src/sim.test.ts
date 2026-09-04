@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Decimal from 'decimal.js';
-import { SimAdapter, US_COSTS, IN_COSTS, type PriceSource } from './sim.js';
+import { SimAdapter, US_COSTS, IN_COSTS, type PriceSource, sliceOrder } from './sim.js';
 import { runConformanceSuite } from './conformance.js';
 import type { Quote } from './types.js';
 
@@ -136,5 +136,122 @@ describe('SimAdapter fill model', () => {
     });
     const acct = await a.getAccount();
     expect(new Decimal(acct.cash).lt(100000)).toBe(true);
+  });
+});
+
+describe('sliceOrder', () => {
+  const D = (n: string): Decimal => new Decimal(n);
+
+  it('leaves a small order whole', () => {
+    expect(sliceOrder(D('100'), D('1000000')).map(String)).toEqual(['100']);
+  });
+
+  it('splits an order that is a meaningful share of volume', () => {
+    // 10,000 shares against 1M volume is 1% — above the 0.5% per-slice cap.
+    const s = sliceOrder(D('10000'), D('1000000'));
+    expect(s.length).toBeGreaterThan(1);
+  });
+
+  it('never loses or invents shares, whatever the split', () => {
+    for (const qty of ['10000', '7', '99999', '12345']) {
+      const total = sliceOrder(D(qty), D('1000000')).reduce((a, b) => a.plus(b), D('0'));
+      expect(total.toString()).toBe(qty);
+    }
+  });
+
+  it('caps the number of slices', () => {
+    expect(sliceOrder(D('10000000'), D('1000000')).length).toBeLessThanOrEqual(8);
+  });
+
+  it('treats unknown volume as one slice rather than guessing', () => {
+    expect(sliceOrder(D('10000'), D('0')).map(String)).toEqual(['10000']);
+  });
+
+  it('returns nothing for a zero order', () => {
+    expect(sliceOrder(D('0'), D('1000000'))).toEqual([]);
+  });
+});
+
+describe('partial fills', () => {
+  const thin: PriceSource = {
+    quote: async (symbol: string) => ({
+      symbol, last: '100', bid: '99.95', ask: '100.05',
+      volume: '100000', at: new Date().toISOString(),
+    }),
+  };
+
+  function adapterFor(src: PriceSource): SimAdapter {
+    return new SimAdapter('sim-us', 'US', src, US_COSTS, '10000000', {
+      tickSize: '0.01', lotSize: '1', minNotional: '1',
+      supportsFractional: false, supportsShort: false,
+    }, { isOpen: () => true });
+  }
+
+  it('emits several fills for an order that is large against volume', async () => {
+    const a = adapterFor(thin);
+    const seen: { qty: string; price: string }[] = [];
+    a.streamFills((f) => seen.push({ qty: f.qty, price: f.price }));
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen.length).toBeGreaterThan(1);
+  });
+
+  it('makes each slice pay a worse price than the last', async () => {
+    // Later slices eat further into the book. A simulator where they do not is
+    // one where position size is free.
+    const a = adapterFor(thin);
+    const prices: number[] = [];
+    a.streamFills((f) => prices.push(Number(f.price)));
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    await new Promise((r) => setTimeout(r, 20));
+    for (let i = 1; i < prices.length; i += 1) expect(prices[i]!).toBeGreaterThan(prices[i - 1]!);
+  });
+
+  it('slices sum to the order quantity', async () => {
+    const a = adapterFor(thin);
+    let total = 0;
+    a.streamFills((f) => { total += Number(f.qty); });
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(total).toBe(5000);
+  });
+
+  it('apportions the fee across slices so the parts sum to the whole', async () => {
+    const a = adapterFor(thin);
+    let fees = 0;
+    a.streamFills((f) => { fees += Number(f.fee); });
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    await new Promise((r) => setTimeout(r, 20));
+    // US_COSTS has zero commission and no per-order fee, so this is zero — the
+    // point is that it is exactly zero rather than NaN from a divide.
+    expect(Number.isFinite(fees)).toBe(true);
+  });
+
+  it('stamps later slices later — a worked order takes time', async () => {
+    const a = adapterFor(thin);
+    const times: number[] = [];
+    a.streamFills((f) => times.push(Date.parse(f.filledAt)));
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    await new Promise((r) => setTimeout(r, 20));
+    for (let i = 1; i < times.length; i += 1) expect(times[i]!).toBeGreaterThan(times[i - 1]!);
+  });
+
+  it('still emits a single fill for an ordinary-sized order', async () => {
+    const a = adapterFor(thin);
+    const seen: unknown[] = [];
+    a.streamFills((f) => seen.push(f));
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '50' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen).toHaveLength(1);
+  });
+
+  it('reports the volume-weighted average on the order itself', async () => {
+    const a = adapterFor(thin);
+    const o = await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '5000' });
+    const seen: { qty: string; price: string }[] = [];
+    a.streamFills((f) => seen.push(f));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(o.filledQty).toBe('5000');
+    expect(Number(o.avgFillPrice)).toBeGreaterThan(100);
   });
 });

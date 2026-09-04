@@ -348,3 +348,42 @@ describe('staged entry', () => {
     expect(plan.abandon_reason).toContain('HALTED');
   });
 });
+
+describe('provenance', () => {
+  it('records the filing, consensus and quote behind every decision', async () => {
+    await runFullCycle();
+    const id = (db.prepare('SELECT id FROM decisions').get() as { id: number }).id;
+    const rows = db.prepare('SELECT * FROM provenance WHERE decision_id = ?').all(id) as
+      { kind: string; source: string; reference: string; as_of: string | null }[];
+    expect(rows.map((r) => r.kind).sort()).toEqual(['consensus', 'filing', 'quote']);
+    const filing = rows.find((r) => r.kind === 'filing')!;
+    expect(filing.reference).toBe('acc-1');
+    expect(filing.as_of).toBe('2026-09-04T20:00:00Z');
+  });
+
+  it('flags the consensus as degraded when the SUE fell back', async () => {
+    // Two prior quarters is too few to estimate dispersion, so the scorer uses
+    // a fallback basis — real, but weaker, and the decision should say so.
+    const thin = {
+      get: () => Promise.resolve({
+        symbol: 'NVDA', currentQuarterEps: 1.2, currentQuarterRevenue: null,
+        nextEarningsDate: null, retrievedAt: new Date().toISOString(),
+        history: [q('2025-09-30', 1.2, 1.19), q('2025-12-31', 2.0, 1.2)],
+      }),
+    } as unknown as typeof UNIVERSE extends never ? never : never;
+    await runFullCycle({ consensus: thin as never });
+    const row = db.prepare(`SELECT degraded, note FROM provenance WHERE kind='consensus'`).get() as
+      { degraded: number; note: string };
+    expect(row.degraded).toBe(1);
+    expect(row.note).toContain('fallback');
+  });
+
+  it('records no provenance in SHADOW mode only after the decision exists', async () => {
+    await runFullCycle({ autonomy: 'SHADOW' });
+    const id = (db.prepare('SELECT id FROM decisions').get() as { id: number }).id;
+    // The sources are what justified the decision, so they are recorded even
+    // when no order follows.
+    expect(db.prepare('SELECT COUNT(*) c FROM provenance WHERE decision_id = ?').get(id))
+      .toEqual({ c: 3 });
+  });
+});

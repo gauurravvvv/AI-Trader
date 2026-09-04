@@ -89,7 +89,7 @@ export class YahooPriceSource implements PriceSource {
       const last = q.regularMarketPrice;
       if (typeof last !== 'number' || !Number.isFinite(last) || last <= 0) return null;
 
-      const { bid, ask } = YahooPriceSource.resolveSpread(last, q.bid, q.ask);
+      const { bid, ask, synthetic } = YahooPriceSource.resolveSpread(last, q.bid, q.ask);
 
       const quote: Quote = {
         symbol,
@@ -98,6 +98,9 @@ export class YahooPriceSource implements PriceSource {
         ask: String(ask),
         volume: String(q.regularMarketVolume ?? 0),
         at: new Date().toISOString(),
+        // Travels with the quote: a decision priced off a synthesised spread is
+        // weaker than one priced off a real book, and provenance records it.
+        synthetic,
       };
       this.cache.set(symbol, { quote, at: Date.now() });
       return quote;

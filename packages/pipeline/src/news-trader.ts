@@ -8,6 +8,7 @@ import type { PipelineDeps } from './agents.js';
 import type { UniverseEntry } from './universe.js';
 import { SIG_NEWS } from './news.js';
 import { newsConditions } from './watch.js';
+import { recordProvenance } from './provenance.js';
 
 /** Where a market's orders go. One per market the system can actually trade. */
 export interface Venue {
@@ -127,6 +128,7 @@ interface NewsPayload {
   materiality: number;
   why: string;
   link: string;
+  publishedAt: string;
 }
 
 /**
@@ -227,6 +229,16 @@ export class NewsTraderAgent extends BaseAgent {
         sourceSignalId,
       );
     const decisionId = Number(ins.lastInsertRowid);
+
+    recordProvenance(this.db, decisionId, [
+      {
+        kind: 'news', source: 'yahoo',
+        reference: d.link === '' ? d.title.slice(0, 120) : d.link,
+        asOf: d.publishedAt,
+        note: `${d.category} · materiality ${String(d.materiality)} · direction ${d.direction.toFixed(2)}`,
+      },
+      { kind: 'quote', source: 'yahoo', reference: symbol, asOf: new Date().toISOString() },
+    ]);
 
     if (this.p.autonomy === 'SHADOW') {
       this.log.warn(

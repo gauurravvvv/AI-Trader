@@ -8,7 +8,7 @@ export type {
 // production consumer of this package — the daemon crashed on startup with
 // "Vitest failed to access its internal state". Tests import
 // './conformance.js' directly.
-export { SimAdapter, US_COSTS, IN_COSTS, CRYPTO_COSTS } from './sim.js';
+export { SimAdapter, sliceOrder, US_COSTS, IN_COSTS, CRYPTO_COSTS } from './sim.js';
 export type { PriceSource, SimCosts } from './sim.js';
 export {
   US_CALENDAR, IN_CALENDAR, CRYPTO_CALENDAR, zonedParts, zonedDate,

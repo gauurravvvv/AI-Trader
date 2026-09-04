@@ -58,6 +58,16 @@ export interface Quote {
   ask: string;
   volume: string;
   at: string;
+  /**
+   * True when the bid/ask was estimated rather than quoted.
+   *
+   * Yahoo reports indicative spreads after hours that can be two orders of
+   * magnitude too wide, so an implausible one is replaced with a tier-based
+   * estimate. The flag travels with the quote because a decision priced off a
+   * synthesised spread is weaker than one priced off a real book, and that is
+   * only knowable here.
+   */
+  synthetic?: boolean;
 }
 
 export interface VenueConstraints {
