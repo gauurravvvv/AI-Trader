@@ -5,6 +5,7 @@ import type { Db } from '@aegis/db';
 import { isHalted, setHalt } from '@aegis/risk';
 import { closedTrades, summarise } from '@aegis/pipeline';
 import { equityCurve } from './equity.js';
+import { marketSession } from './session.js';
 
 export interface DashboardDeps {
   db: Db;
@@ -197,6 +198,7 @@ export class Dashboard {
           why: d['why'] ?? '',
         };
       }),
+      session: marketSession(new Date()),
       balances: this.balances(),
       performance: this.performance(),
       equity: equityCurve(this.deps.db),
@@ -256,7 +258,14 @@ export class Dashboard {
       const url = req.url ?? '/';
 
       if (url === '/' || url.startsWith('/?')) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        // No-store, because the page is the whole application and it changes
+        // whenever the code does. A cached shell means a UI fix appears to have
+        // done nothing until someone thinks to hard-reload, which is a bad way
+        // to spend an afternoon.
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, must-revalidate',
+        });
         res.end(html);
         return;
       }

@@ -1,0 +1,466 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Æ
+        - generic [ref=e6]: Aegis
+        - button "⟩" [ref=e7] [cursor=pointer]
+      - generic [ref=e9]: Trading
+      - generic "Overview" [ref=e10] [cursor=pointer]: ▦
+      - generic "Decisions" [ref=e13] [cursor=pointer]: ◧
+      - generic "Execution" [ref=e17] [cursor=pointer]: ⇅
+      - generic [ref=e21]: Thinking
+      - generic "Research" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: ◍
+        - generic [ref=e25]: "16"
+      - generic "Agents" [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: ⁂
+        - generic [ref=e29]: "6"
+      - generic [ref=e30]: Operations
+      - generic "Money" [ref=e31] [cursor=pointer]:
+        - generic [ref=e32]: ▤
+        - generic [ref=e34]: $0.0755
+      - generic "Market" [ref=e35] [cursor=pointer]: ◪
+      - generic [ref=e39]:
+        - generic "Pre-market · Opens 09:30 ET · 07:14 ET" [ref=e190]: Pre-market
+        - button "◐ System" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]: ◐
+          - generic [ref=e45]: System
+    - generic [ref=e46]:
+      - banner [ref=e47]:
+        - generic [ref=e48]: Paper money only
+        - generic [ref=e49]: AUTO
+        - generic [ref=e50]: sim-us
+        - generic [ref=e51]: 16:44:23
+        - button "Kill switch" [ref=e52] [cursor=pointer]
+      - generic [ref=e54]:
+        - generic [ref=e191]:
+          - generic [ref=e192]: ▼
+          - generic [ref=e193]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e194]:
+          - generic [ref=e195]: ▼
+          - generic [ref=e196]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e197]:
+          - generic [ref=e198]: ▲
+          - generic [ref=e199]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e200]:
+          - generic [ref=e201]: ▼
+          - generic [ref=e202]: INTC
+          - text: Mizuho Adjusts Price Target on Intel to $92 From $109, Keeps Neutral Rating
+        - generic [ref=e203]:
+          - generic [ref=e204]: ▼
+          - generic [ref=e205]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e206]:
+          - generic [ref=e207]: ▼
+          - generic [ref=e208]: MSFT
+          - text: "Market Chatter: Microsoft-Backed OpenAI Agents Hijacked German Website, Researchers Say"
+        - generic [ref=e209]:
+          - generic [ref=e210]: ▼
+          - generic [ref=e211]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e212]:
+          - generic [ref=e213]: ▲
+          - generic [ref=e214]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e215]:
+          - generic [ref=e216]: ▼
+          - generic [ref=e217]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e218]:
+          - generic [ref=e219]: ▲
+          - generic [ref=e220]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e221]:
+          - generic [ref=e222]: ▼
+          - generic [ref=e223]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e224]:
+          - generic [ref=e225]: ▼
+          - generic [ref=e226]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e227]:
+          - generic [ref=e228]: ▲
+          - generic [ref=e229]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e230]:
+          - generic [ref=e231]: ▼
+          - generic [ref=e232]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e233]:
+          - generic [ref=e234]: ▼
+          - generic [ref=e235]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e236]:
+          - generic [ref=e237]: ▼
+          - generic [ref=e238]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e239]:
+          - generic [ref=e240]: ▲
+          - generic [ref=e241]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e242]:
+          - generic [ref=e243]: ▼
+          - generic [ref=e244]: INTC
+          - text: Mizuho Adjusts Price Target on Intel to $92 From $109, Keeps Neutral Rating
+        - generic [ref=e245]:
+          - generic [ref=e246]: ▼
+          - generic [ref=e247]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e248]:
+          - generic [ref=e249]: ▼
+          - generic [ref=e250]: MSFT
+          - text: "Market Chatter: Microsoft-Backed OpenAI Agents Hijacked German Website, Researchers Say"
+        - generic [ref=e251]:
+          - generic [ref=e252]: ▼
+          - generic [ref=e253]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e254]:
+          - generic [ref=e255]: ▲
+          - generic [ref=e256]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e257]:
+          - generic [ref=e258]: ▼
+          - generic [ref=e259]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e260]:
+          - generic [ref=e261]: ▲
+          - generic [ref=e262]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e263]:
+          - generic [ref=e264]: ▼
+          - generic [ref=e265]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e266]:
+          - generic [ref=e267]: ▼
+          - generic [ref=e268]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e269]:
+          - generic [ref=e270]: ▲
+          - generic [ref=e271]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e272]:
+          - generic [ref=e273]: ▼
+          - generic [ref=e274]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+      - generic [ref=e133]: AUTO — placing simulated orders. Paper money only; there is no path to a funded account.
+      - main [ref=e134]:
+        - generic [ref=e275]:
+          - heading "Market" [level=2] [ref=e276]
+          - paragraph [ref=e277]: Charts and gauges are TradingView’s data, not ours. Our own fills are on Overview.
+          - generic [ref=e278]:
+            - generic [ref=e280]: Pre-market
+            - generic [ref=e281]: Opens 09:30 ET · 2h 16m
+            - generic [ref=e282]: 07:14 ET
+          - generic [ref=e283]:
+            - iframe [ref=e287]:
+              - generic [ref=f2e2]:
+                - toolbar [ref=f2e6]:
+                  - generic [ref=f2e10]:
+                    - generic [ref=f2e11]:
+                      - button "Symbol search" [ref=f2e12]:
+                        - generic [ref=f2e16]: NVDA
+                      - button "Compare symbols" [ref=f2e17]
+                    - generic [ref=f2e25]:
+                      - radiogroup [ref=f2e26]:
+                        - radio "1 minute" [ref=f2e27]:
+                          - generic [ref=f2e28]: 1m
+                        - radio "30 minutes" [ref=f2e30]:
+                          - generic [ref=f2e31]: 30m
+                        - radio "1 hour" [ref=f2e33]:
+                          - generic [ref=f2e34]: 1h
+                        - radio "1 day" [checked] [ref=f2e36]:
+                          - generic [ref=f2e37]: D
+                      - button "Chart interval" [ref=f2e39]
+                    - generic [ref=f2e48]:
+                      - radiogroup [ref=f2e49]:
+                        - radio "Bars" [ref=f2e50]
+                        - radio "Candles" [checked] [ref=f2e54]
+                        - radio "Area" [ref=f2e61]
+                      - button "Bar's style" [ref=f2e65]
+                    - button "Indicators, metrics, and strategies" [ref=f2e75]:
+                      - generic [ref=f2e80]: Indicators
+                    - button "Take a snapshot" [ref=f2e83]
+                - toolbar [ref=f2e90]:
+                  - generic [ref=f2e94]:
+                    - generic [ref=f2e95]:
+                      - generic [ref=f2e98]:
+                        - button "Cross" [ref=f2e100]
+                        - button "Cursors" [pressed] [ref=f2e106]
+                      - generic [ref=f2e112]:
+                        - button "Trendline" [ref=f2e114]
+                        - button "Trend tools" [ref=f2e120]
+                      - generic [ref=f2e126]:
+                        - button "Fib retracement" [ref=f2e128]
+                        - button "Gann and Fibonacci tools" [ref=f2e137]
+                      - generic [ref=f2e143]:
+                        - button "XABCD pattern" [ref=f2e145]
+                        - button "Patterns" [ref=f2e151]
+                      - generic [ref=f2e157]:
+                        - button "Long position" [ref=f2e159]
+                        - button "Forecasting and measurement tools" [ref=f2e163]
+                      - generic [ref=f2e169]:
+                        - button "Brush" [ref=f2e171]
+                        - button "Geometric shapes" [ref=f2e177]
+                      - generic [ref=f2e183]:
+                        - button "Text" [ref=f2e185]
+                        - button "Annotation tools" [ref=f2e189]
+                      - generic [ref=f2e194]:
+                        - button "Icon" [ref=f2e196]
+                        - button "Icons" [ref=f2e200]
+                    - generic [ref=f2e204]:
+                      - button "Measure" [ref=f2e205]
+                      - button "Zoom in" [ref=f2e209]
+                    - generic [ref=f2e219]:
+                      - button "Magnet mode snaps drawings placed near price bars to the closest OHLC value" [ref=f2e221]
+                      - button "Magnets" [ref=f2e227]
+                - generic [ref=f2e232]:
+                  - 'region "Chart #1" [ref=f2e235]':
+                    - generic [ref=f2e236]:
+                      - generic [ref=f2e239]:
+                        - generic:
+                          - generic:
+                            - toolbar:
+                              - generic:
+                                - generic [ref=f2e240]:
+                                  - generic "Change symbol" [ref=f2e241]:
+                                    - generic [ref=f2e242]: "N"
+                                    - button "Change symbol" [ref=f2e246]: NVIDIA Corporation
+                                  - generic "Change interval" [ref=f2e247]:
+                                    - text: ·
+                                    - button "Change interval" [ref=f2e248]: 1D
+                                  - generic "NASDAQ — NASDAQ Stock Market" [ref=f2e249]:
+                                    - text: ·
+                                    - generic [ref=f2e250]: Cboe One
+                                - generic:
+                                  - generic:
+                                    - button "More"
+                                - button "Pre-market · Data is delayed" [ref=f2e252]
+                              - generic [ref=f2e260]:
+                                - generic [ref=f2e261]:
+                                  - generic [ref=f2e262]: O
+                                  - generic [ref=f2e263]: "226.02"
+                                - generic [ref=f2e264]:
+                                  - generic [ref=f2e265]: H
+                                  - generic [ref=f2e266]: "230.40"
+                                - generic [ref=f2e267]:
+                                  - generic [ref=f2e268]: L
+                                  - generic [ref=f2e269]: "224.75"
+                                - generic [ref=f2e270]:
+                                  - generic [ref=f2e271]: C
+                                  - generic [ref=f2e272]: "228.45"
+                                - generic [ref=f2e273]: +4.04 (+1.80%)
+                          - generic:
+                            - button "Hide indicators legend" [ref=f2e275]
+                            - generic:
+                              - toolbar:
+                                - generic:
+                                  - generic "Volume" [ref=f2e280]: Vol
+                                  - generic:
+                                    - generic:
+                                      - button "Hide"
+                                      - button "Settings"
+                                      - button "Remove"
+                                      - button "More"
+                                - generic "Volume" [ref=f2e285]: 134.61 M
+                              - toolbar:
+                                - generic:
+                                  - generic [ref=f2e286]:
+                                    - generic "Simple Moving Average" [ref=f2e287]: SMA
+                                    - generic [ref=f2e289]:
+                                      - generic "Length" [ref=f2e290]: "9"
+                                      - generic "Source" [ref=f2e292]: close
+                                  - generic:
+                                    - generic:
+                                      - button "Hide"
+                                      - button "Settings"
+                                      - button "Remove"
+                                      - button "More"
+                                - generic "MA" [ref=f2e297]: "218.64"
+                        - generic "Chart for BATS_DLY:NVDA, 1 day" [ref=f2e299]
+                      - generic [ref=f2e308]:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - toolbar:
+                                - generic:
+                                  - generic [ref=f2e309]:
+                                    - generic "Moving Average Convergence Divergence" [ref=f2e310]: MACD
+                                    - generic [ref=f2e312]:
+                                      - generic "Source" [ref=f2e313]: close
+                                      - generic "Fast length" [ref=f2e315]: "12"
+                                      - generic "Slow length" [ref=f2e317]: "26"
+                                      - generic "Signal length" [ref=f2e319]: "9"
+                                  - generic:
+                                    - generic:
+                                      - button "Hide"
+                                      - button "Settings"
+                                      - button "Remove"
+                                      - button "More"
+                                - generic [ref=f2e322]:
+                                  - generic "Histogram" [ref=f2e324]: "0.4698"
+                                  - generic "MACD" [ref=f2e326]: "3.25"
+                                  - generic "Signal line" [ref=f2e328]: "2.78"
+                      - generic [ref=f2e339]:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - toolbar:
+                                - generic:
+                                  - generic [ref=f2e340]:
+                                    - generic "Relative Strength Index" [ref=f2e341]: RSI
+                                    - generic [ref=f2e343]:
+                                      - generic "RSI Length" [ref=f2e344]: "14"
+                                      - generic "Source" [ref=f2e346]: close
+                                  - generic:
+                                    - generic:
+                                      - button "Hide"
+                                      - button "Settings"
+                                      - button "Remove"
+                                      - button "More"
+                                - generic [ref=f2e349]:
+                                  - generic "RSI" [ref=f2e351]: "59.21"
+                                  - generic "RSI-based MA" [ref=f2e353]: "53.90"
+                      - generic [ref=f2e364]:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - toolbar:
+                                - generic:
+                                  - generic "Volume" [ref=f2e366]: Vol
+                                  - generic:
+                                    - generic:
+                                      - button "Hide"
+                                      - button "Settings"
+                                      - button "Remove"
+                                      - button "More"
+                                - generic [ref=f2e369]:
+                                  - generic "Volume" [ref=f2e371]: 134.68 M
+                                  - generic "Volume MA" [ref=f2e373]: 127.44 M
+                  - toolbar [ref=f2e389]:
+                    - generic [ref=f2e392]:
+                      - button "1 day in 1 minute intervals" [ref=f2e393]:
+                        - generic [ref=f2e394]: 1D
+                      - button "5 days in 5 minutes intervals" [ref=f2e395]:
+                        - generic [ref=f2e396]: 5D
+                      - button "1 month in 30 minutes intervals" [ref=f2e397]:
+                        - generic [ref=f2e398]: 1M
+                      - button "3 months in 1 hour intervals" [ref=f2e399]:
+                        - generic [ref=f2e400]: 3M
+                      - button "6 months in 2 hours intervals" [ref=f2e401]:
+                        - generic [ref=f2e402]: 6M
+                      - button "Year to day in 1 day intervals" [ref=f2e403]:
+                        - generic [ref=f2e404]: YTD
+                      - button "1 year in 1 day intervals" [ref=f2e405]:
+                        - generic [ref=f2e406]: 1Y
+                      - button "5 years in 1 week intervals" [ref=f2e407]:
+                        - generic [ref=f2e408]: 5Y
+                      - button "All data in 1 month intervals" [ref=f2e409]:
+                        - generic [ref=f2e410]: All
+                    - generic [ref=f2e411]:
+                      - button "07:14:22 UTC-4" [disabled] [ref=f2e414]
+                      - button "Adjust data for dividends" [ref=f2e419]:
+                        - generic [ref=f2e420]: ADJ
+            - iframe [ref=e291]:
+              - generic [ref=f1e3]:
+                - generic [ref=f1e8]:
+                  - generic [ref=f1e9]:
+                    - text: Technical Analysis for
+                    - link "NVDA" [ref=f1e10] [cursor=pointer]:
+                      - /url: https://www.tradingview.com/symbols/NASDAQ-NVDA/technicals/?utm_campaign=technical-analysis&utm_medium=widget&utm_source=localhost
+                  - tablist [ref=f1e13]:
+                    - tab "1 minute" [ref=f1e14]
+                    - tab "1 day" [selected] [ref=f1e17]
+                    - tab "5 minutes"
+                    - tab "15 minutes"
+                    - tab "30 minutes"
+                    - tab "1 hour"
+                    - tab "2 hours"
+                    - tab "4 hours"
+                    - tab "1 week"
+                    - tab "1 month"
+                    - button [aria-hidden] [ref=f1e20]:
+                      - generic [ref=f1e21]: More
+                  - generic [ref=f1e26]:
+                    - generic [ref=f1e27]:
+                      - generic [ref=f1e28]:
+                        - generic [ref=f1e29]: Neutral
+                        - generic [ref=f1e30]:
+                          - generic [ref=f1e31]: Sell
+                          - generic [ref=f1e32]: Buy
+                        - generic [ref=f1e33]:
+                          - generic [ref=f1e34]: Strong sell
+                          - generic [ref=f1e35]: Strong buy
+                      - generic [ref=f1e47]:
+                        - generic [ref=f1e48]: Strong sell
+                        - generic [ref=f1e49]: Sell
+                        - generic [ref=f1e50]: Neutral
+                        - generic [ref=f1e51]: Buy
+                        - generic [ref=f1e52]: Strong buy
+                    - generic [ref=f1e53]:
+                      - generic [ref=f1e54]:
+                        - generic [ref=f1e55]: Sell
+                        - generic [ref=f1e56]: "0"
+                      - generic [ref=f1e57]:
+                        - generic [ref=f1e58]: Neutral
+                        - generic [ref=f1e59]: "10"
+                      - generic [ref=f1e60]:
+                        - generic [ref=f1e61]: Buy
+                        - generic [ref=f1e62]: "16"
+                - generic [ref=f1e63]:
+                  - link "Visit TradingView — financial charting platform and trading community":
+                    - /url: https://www.tradingview.com?utm_campaign=technical-analysis-logo&utm_medium=widget&utm_source=localhost
+            - iframe [ref=e295]:
+              - generic [ref=f3e3]:
+                - generic [ref=f3e9]:
+                  - generic [ref=f3e10]:
+                    - generic [ref=f3e13]:
+                      - generic [ref=f3e14]:
+                        - link "SPXUSD" [ref=f3e15] [cursor=pointer]:
+                          - /url: https://www.tradingview.com/symbols/FOREXCOM-SPX500/?utm_campaign=market-overview&utm_medium=widget&utm_source=localhost
+                        - generic "Market open"
+                      - generic [ref=f3e16]: S&P 500
+                    - generic [ref=f3e18]:
+                      - generic [ref=f3e19]: 7,751.2
+                      - generic:
+                        - generic [ref=f3e21]: +0.13%
+                        - generic [ref=f3e22]: "+10.10"
+                  - generic [ref=f3e23]:
+                    - generic [ref=f3e26]:
+                      - generic [ref=f3e27]:
+                        - link "NSXUSD" [ref=f3e28] [cursor=pointer]:
+                          - /url: https://www.tradingview.com/symbols/FOREXCOM-NAS100/?utm_campaign=market-overview&utm_medium=widget&utm_source=localhost
+                        - generic "Market open"
+                      - generic [ref=f3e29]: Nasdaq 100
+                    - generic [ref=f3e31]:
+                      - generic [ref=f3e32]: 29,619.1
+                      - generic:
+                        - generic [ref=f3e34]: +0.55%
+                        - generic [ref=f3e35]: "+161.00"
+                  - generic [ref=f3e36]:
+                    - generic [ref=f3e39]:
+                      - generic [ref=f3e40]:
+                        - link "DJI" [ref=f3e41] [cursor=pointer]:
+                          - /url: https://www.tradingview.com/symbols/FOREXCOM-US30/?utm_campaign=market-overview&utm_medium=widget&utm_source=localhost
+                        - generic "Market open"
+                      - generic [ref=f3e42]: Dow 30
+                    - generic [ref=f3e44]:
+                      - generic [ref=f3e45]: 53,632.0
+                      - generic:
+                        - generic [ref=f3e47]: −0.03%
+                        - generic [ref=f3e48]: −18.10
+                  - generic [ref=f3e50]:
+                    - generic [ref=f3e51]: V
+                    - generic [ref=f3e53]:
+                      - link "VIX Login or register to get data" [ref=f3e55] [cursor=pointer]:
+                        - /url: https://www.tradingview.com/symbols/CBOE-VIX/?utm_campaign=market-overview&utm_medium=widget&utm_source=localhost
+                        - text: VIX
+                        - generic "Login or register to get data" [ref=f3e56]
+                      - generic [ref=f3e59]: VIX
+                - generic [ref=f3e66]:
+                  - link "Visit TradingView — financial charting platform and trading community":
+                    - /url: https://www.tradingview.com?utm_campaign=market-overview-logo&utm_medium=widget&utm_source=localhost
+  - contentinfo [ref=e189]: Paper trading only. Educational and research use — not financial advice. Venue fills are simulated with spread, slippage and full cost modelling.

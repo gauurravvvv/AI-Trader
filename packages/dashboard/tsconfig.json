@@ -16,6 +16,9 @@
     },
     {
       "path": "../pipeline"
+    },
+    {
+      "path": "../brokers"
     }
   ]
 }

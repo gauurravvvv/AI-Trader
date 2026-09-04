@@ -1,0 +1,205 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Æ
+        - generic [ref=e6]: Aegis
+        - button "⟩" [ref=e7] [cursor=pointer]
+      - generic [ref=e9]: Trading
+      - generic "Overview" [ref=e10] [cursor=pointer]: ▦
+      - generic "Decisions" [ref=e13] [cursor=pointer]: ◧
+      - generic "Execution" [ref=e17] [cursor=pointer]: ⇅
+      - generic [ref=e21]: Thinking
+      - generic "Research" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: ◍
+        - generic [ref=e25]: "13"
+      - generic "Agents" [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: ⁂
+        - generic [ref=e29]: "5"
+      - generic [ref=e30]: Operations
+      - generic "Money" [ref=e31] [cursor=pointer]:
+        - generic [ref=e32]: ▤
+        - generic [ref=e34]: $0.0651
+      - generic "Market" [ref=e35] [cursor=pointer]: ◪
+      - generic [ref=e39]:
+        - generic "Pre-market · Opens 09:30 ET · 07:12 ET" [ref=e40]: Pre-market
+        - button "◐ System" [ref=e43] [cursor=pointer]:
+          - generic [ref=e44]: ◐
+          - generic [ref=e45]: System
+    - generic [ref=e46]:
+      - banner [ref=e47]:
+        - generic [ref=e48]: Paper money only
+        - generic [ref=e49]: AUTO
+        - generic [ref=e50]: sim-us
+        - generic [ref=e51]: 16:42:57
+        - button "Kill switch" [ref=e52] [cursor=pointer]
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56]: ▼
+          - generic [ref=e57]: INTC
+          - text: Mizuho Adjusts Price Target on Intel to $92 From $109, Keeps Neutral Rating
+        - generic [ref=e58]:
+          - generic [ref=e59]: ▼
+          - generic [ref=e60]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e61]:
+          - generic [ref=e62]: ▼
+          - generic [ref=e63]: MSFT
+          - text: "Market Chatter: Microsoft-Backed OpenAI Agents Hijacked German Website, Researchers Say"
+        - generic [ref=e64]:
+          - generic [ref=e65]: ▼
+          - generic [ref=e66]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e67]:
+          - generic [ref=e68]: ▲
+          - generic [ref=e69]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e70]:
+          - generic [ref=e71]: ▼
+          - generic [ref=e72]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e73]:
+          - generic [ref=e74]: ▲
+          - generic [ref=e75]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e76]:
+          - generic [ref=e77]: ▼
+          - generic [ref=e78]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e79]:
+          - generic [ref=e80]: ▼
+          - generic [ref=e81]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e82]:
+          - generic [ref=e83]: ▲
+          - generic [ref=e84]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e85]:
+          - generic [ref=e86]: ▼
+          - generic [ref=e87]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e88]:
+          - generic [ref=e89]: ▼
+          - generic [ref=e90]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e91]:
+          - generic [ref=e92]: ▲
+          - generic [ref=e93]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e94]:
+          - generic [ref=e95]: ▼
+          - generic [ref=e96]: INTC
+          - text: Mizuho Adjusts Price Target on Intel to $92 From $109, Keeps Neutral Rating
+        - generic [ref=e97]:
+          - generic [ref=e98]: ▼
+          - generic [ref=e99]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e100]:
+          - generic [ref=e101]: ▼
+          - generic [ref=e102]: MSFT
+          - text: "Market Chatter: Microsoft-Backed OpenAI Agents Hijacked German Website, Researchers Say"
+        - generic [ref=e103]:
+          - generic [ref=e104]: ▼
+          - generic [ref=e105]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e106]:
+          - generic [ref=e107]: ▲
+          - generic [ref=e108]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e109]:
+          - generic [ref=e110]: ▼
+          - generic [ref=e111]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e112]:
+          - generic [ref=e113]: ▲
+          - generic [ref=e114]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e115]:
+          - generic [ref=e116]: ▼
+          - generic [ref=e117]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e118]:
+          - generic [ref=e119]: ▼
+          - generic [ref=e120]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e121]:
+          - generic [ref=e122]: ▲
+          - generic [ref=e123]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+        - generic [ref=e124]:
+          - generic [ref=e125]: ▼
+          - generic [ref=e126]: ADBE
+          - text: Adobe Shares Fall After CEO Succession and Executive Departure
+        - generic [ref=e127]:
+          - generic [ref=e128]: ▼
+          - generic [ref=e129]: AAPL
+          - text: "Update: Market Chatter: Apple Sued by BASF Over Facial Authentication Technology"
+        - generic [ref=e130]:
+          - generic [ref=e131]: ▲
+          - generic [ref=e132]: NVDA
+          - text: Why this veteran tech CEO is impressed by Nvidia's Jensen Huang buying Hugging Face for $12.9 bi
+      - generic [ref=e133]: AUTO — placing simulated orders. Paper money only; there is no path to a funded account.
+      - main [ref=e134]:
+        - generic [ref=e135]:
+          - heading "Overview" [level=2] [ref=e136]
+          - paragraph [ref=e137]: Money, exposure and what the system is doing right now.
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - text: Total equity
+              - generic [ref=e140]: $100,000
+              - generic [ref=e141]: cash + positions
+            - generic [ref=e142]:
+              - text: Available cash
+              - generic [ref=e143]: $100,000
+              - generic [ref=e144]: free to deploy
+            - generic [ref=e145]:
+              - text: Invested
+              - generic [ref=e146]: $0
+              - generic [ref=e147]: 0.0% of equity deployed
+            - generic [ref=e148]:
+              - text: Realised P&L
+              - generic [ref=e149]: $0
+              - generic [ref=e150]: closed trades
+            - generic [ref=e151]:
+              - text: Open positions
+              - generic [ref=e152]: "0"
+              - generic [ref=e153]: $0 long · $0 short
+            - generic [ref=e154]:
+              - text: Model spend
+              - generic [ref=e155]: $0.0651
+              - generic [ref=e156]: of $100 · tier NORMAL
+          - generic [ref=e157]:
+            - generic [ref=e158]:
+              - heading "Realised equity" [level=2] [ref=e159]
+              - img "Realised profit and loss over time, with drawdown shaded and each fill marked" [ref=e161]:
+                - generic [ref=e162]: No fills yet — the curve starts at the first one.
+              - paragraph [ref=e163]: Realised only. Marking open positions to market would move the line when nothing was decided — this shows what the decisions did, not what the market did to them while they were held.
+            - generic [ref=e164]:
+              - heading "Performance" [level=2] [ref=e165]
+              - generic [ref=e166]:
+                - generic [ref=e167]:
+                  - generic [ref=e168]: Closed
+                  - text: "0"
+                - generic [ref=e169]:
+                  - generic [ref=e170]: Win rate
+                  - text: —
+                - generic [ref=e171]:
+                  - generic [ref=e172]: Realised
+                  - text: "0.00"
+                - generic [ref=e173]:
+                  - generic [ref=e174]: Max DD
+                  - text: "0.00"
+              - paragraph [ref=e175]: Nothing has closed yet.
+            - generic [ref=e176]:
+              - heading "Positions" [level=2] [ref=e177]
+              - table [ref=e179]:
+                - rowgroup [ref=e180]:
+                  - row [ref=e181]:
+                    - columnheader "Symbol" [ref=e182]
+                    - columnheader "Qty" [ref=e183]
+                    - columnheader "Avg cost" [ref=e184]
+                    - columnheader "Realised" [ref=e185]
+                - rowgroup [ref=e186]:
+                  - row [ref=e187]:
+                    - cell "nothing yet" [ref=e188]
+  - contentinfo [ref=e189]: Paper trading only. Educational and research use — not financial advice. Venue fills are simulated with spread, slippage and full cost modelling.

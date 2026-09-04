@@ -11,6 +11,7 @@
     "@aegis/db": "workspace:*",
     "@aegis/risk": "workspace:*",
     "@aegis/pipeline": "workspace:*",
-    "decimal.js": "^10.4.3"
+    "decimal.js": "^10.4.3",
+    "@aegis/brokers": "workspace:*"
   }
 }

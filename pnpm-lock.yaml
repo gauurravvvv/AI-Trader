@@ -149,6 +149,9 @@ importers:
 
   packages/dashboard:
     dependencies:
+      '@aegis/brokers':
+        specifier: workspace:*
+        version: link:../brokers
       '@aegis/db':
         specifier: workspace:*
         version: link:../db

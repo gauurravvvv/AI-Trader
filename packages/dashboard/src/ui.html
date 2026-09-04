@@ -57,6 +57,21 @@
   .muted{color:var(--ink3)}
   .pos{color:var(--ok)} .neg{color:var(--flag)} .warnc{color:var(--warn)}
 
+  /* Headline links had no styling at all, so they rendered browser-default
+     blue — and purple once visited — which clashes with the palette in light
+     mode and is barely legible on the dark ground. Visited deliberately does
+     not change: a headline you have opened is not a different headline. */
+  main a[href]{color:var(--accent);text-decoration:none;
+    border-bottom:1px solid color-mix(in srgb,var(--accent) 32%,transparent)}
+  main a[href]:hover{border-bottom-color:var(--accent)}
+  main a[href]:visited{color:var(--accent)}
+
+  /* A direction stripe, so bullish and bearish are separable by position and
+     not only by hue — red and green are the worst possible pair to rely on. */
+  tr.up  td:first-child{box-shadow:inset 3px 0 0 var(--ok)}
+  tr.down td:first-child{box-shadow:inset 3px 0 0 var(--flag)}
+  tr.flat td:first-child{box-shadow:inset 3px 0 0 var(--rule)}
+
   /* App shell. The sidebar owns the full viewport height and the content
      column scrolls independently beside it, so the nav is always reachable
      without scrolling back to the top. */
@@ -75,8 +90,27 @@
   nav.side{height:100vh;overflow-y:auto;overflow-x:hidden;background:var(--bar);
     border-right:1px solid var(--rule);padding:.6rem .5rem 1rem;display:flex;
     flex-direction:column;gap:1px}
-  nav.side .brand{display:flex;align-items:center;gap:.55rem;padding:.35rem .5rem .8rem;
+  nav.side .brand{display:flex;align-items:center;gap:.55rem;padding:.3rem .4rem .75rem;
     font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+  nav.side .brand .bname{flex:1 1 auto}
+  #navtoggle{flex:0 0 auto;background:none;border:1px solid var(--rule);color:var(--ink3);
+    border-radius:5px;width:24px;height:24px;line-height:1;cursor:pointer;font-size:.8rem;
+    display:grid;place-items:center;padding:0}
+  #navtoggle:hover{background:var(--sunk);color:var(--ink)}
+
+  .sidefoot{border-top:1px solid var(--rule2);padding-top:.5rem;margin-top:.5rem;
+    display:flex;flex-direction:column;gap:.35rem}
+  .sess{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;font-size:.78rem;
+    color:var(--ink2);white-space:nowrap}
+  .sess .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--ink3)}
+  .sess.open .dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+  .sess.pre .dot,.sess.after .dot{background:var(--warn)}
+  .sess.shut .dot{background:var(--ink3)}
+  #theme{display:flex;align-items:center;gap:.6rem;background:none;border:1px solid var(--rule);
+    color:var(--ink2);border-radius:5px;padding:.4rem .5rem;font-size:.8rem;cursor:pointer;
+    width:100%;text-align:left}
+  #theme:hover{background:var(--sunk);color:var(--ink)}
+  #theme .ico{width:18px;text-align:center;flex:0 0 auto}
   nav.side .brand .mark{flex:0 0 auto;width:22px;height:22px;border-radius:5px;
     background:var(--accent);color:var(--paper);display:grid;place-items:center;
     font-size:.72rem;font-weight:700}
@@ -102,14 +136,20 @@
   :root[data-nav=collapsed] nav.side .label,
   :root[data-nav=collapsed] nav.side .cnt,
   :root[data-nav=collapsed] nav.side .grp,
-  :root[data-nav=collapsed] nav.side .brand span:not(.mark){
+  :root[data-nav=collapsed] nav.side .bname{
     position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   :root[data-nav=collapsed] nav.side a{justify-content:center;padding:.5rem 0}
-  :root[data-nav=collapsed] nav.side .grp{padding:.4rem 0 0;height:.6rem}
-  :root[data-nav=collapsed] nav.side .brand{justify-content:center;padding:.35rem 0 .8rem}
-  :root[data-nav=collapsed] #navtoggle{justify-content:center}
+  :root[data-nav=collapsed] nav.side .grp{padding:.35rem 0 0;height:.5rem}
+  :root[data-nav=collapsed] nav.side .brand{flex-direction:column;gap:.4rem;padding:.3rem 0 .7rem}
+  :root[data-nav=collapsed] .sess{justify-content:center;padding:.35rem 0}
+  :root[data-nav=collapsed] #theme{justify-content:center;padding:.4rem 0}
 
-  main{padding:1rem 1.25rem;min-width:0}
+  /* main must be a flex child that fills the column, or `height:100%` on a
+     page resolves against an auto-height parent and silently does nothing —
+     which is exactly how the market page ended up 534px tall in an 863px
+     window. It still grows past the viewport when a page is long; .col scrolls. */
+  main{padding:1rem 1.25rem;min-width:0;flex:1 1 auto;min-height:0;
+    display:flex;flex-direction:column}
   .page{display:none} .page.on{display:block}
   .page > h2:first-child{margin-top:0}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:.7rem;
@@ -129,6 +169,22 @@
     nav.side a{justify-content:center;padding:.5rem 0}
     #navtoggle{display:none}
   }
+  /* Headline ticker. The track is duplicated and translated by exactly -50%,
+     so the loop is seamless without measuring anything. */
+  .ticker{position:relative;overflow:hidden;border-bottom:1px solid var(--rule2);
+    background:var(--sunk);height:32px;display:flex;align-items:center;flex:0 0 auto}
+  .ticker .track{display:flex;gap:2.4rem;white-space:nowrap;padding-left:1.25rem;
+    animation:slide 70s linear infinite;will-change:transform}
+  .ticker:hover .track{animation-play-state:paused}
+  .ticker .item{display:flex;align-items:center;gap:.45rem;font-size:.79rem;color:var(--ink2)}
+  .ticker .item b{color:var(--ink);font-weight:600}
+  .ticker .item .arw{font-size:.72rem}
+  @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion:reduce){
+    .ticker .track{animation:none}
+    .ticker{overflow-x:auto}
+  }
+
   .notice{margin:0;padding:.7rem 1.25rem;border-bottom:1px solid var(--rule2);
     background:var(--sunk);color:var(--ink2);font-size:.84rem}
   .notice b{color:var(--ink)}
@@ -144,31 +200,66 @@
   .kv div b{font-family:ui-monospace,monospace;font-size:1.05rem;font-weight:600}
   .empty{color:var(--ink3);font-size:.78rem;padding:.5rem 0}
   .tv{border:1px solid var(--rule);height:400px}
+  /* The market page fills what is left of the viewport rather than sitting in
+     a fixed box: a chart is the one thing on this dashboard worth the space. */
+  #page-market{display:none;flex-direction:column;min-height:0}
+  #page-market.on{display:flex;flex:1 1 auto}
+  .mkt-grid{display:grid;gap:.7rem;flex:1 1 auto;min-height:0;
+    grid-template-columns:1fr 320px;grid-template-rows:1fr 230px}
+  .mkt-chart{grid-column:1;grid-row:1 / span 2;border:1px solid var(--rule);
+    border-radius:6px;overflow:hidden;min-height:0}
+  .mkt-side{grid-column:2;grid-row:1;border:1px solid var(--rule);border-radius:6px;
+    overflow:hidden;min-height:0}
+  .mkt-tape{grid-column:2;grid-row:2;border:1px solid var(--rule);border-radius:6px;
+    overflow:hidden;min-height:0}
+  .mkt-chart > div,.mkt-side > div,.mkt-tape > div{height:100%}
+  @media (max-width:1000px){
+    .mkt-grid{grid-template-columns:1fr;grid-template-rows:420px 300px 230px}
+    .mkt-chart{grid-column:1;grid-row:1}
+    .mkt-side{grid-column:1;grid-row:2}
+    .mkt-tape{grid-column:1;grid-row:3}
+  }
+  .sesbar{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;
+    padding:.55rem .75rem;margin:0 0 .7rem;border:1px solid var(--rule2);
+    border-radius:6px;background:var(--sunk);font-size:.82rem}
+  .sesbar .dot{width:9px;height:9px;border-radius:50%;background:var(--ink3)}
+  .sesbar.open .dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+  .sesbar.pre .dot,.sesbar.after .dot{background:var(--warn)}
   footer{padding:1rem 1.25rem;color:var(--ink3);font-size:.72rem;border-top:1px solid var(--rule)}
 </style>
 </head>
 <body>
 <div class="app">
 <nav class="side" id="nav">
-  <div class="brand"><span class="mark">Æ</span><span>Aegis</span></div>
+  <div class="brand">
+    <span class="mark">Æ</span>
+    <span class="bname">Aegis</span>
+    <button id="navtoggle" title="Collapse the sidebar" aria-expanded="true"><span id="navtoggleico">⟨</span></button>
+  </div>
 
   <div class="grp">Trading</div>
-  <a data-page="overview" class="on" title="Overview"><span class="ico">◱</span><span class="label">Overview</span></a>
-  <a data-page="decisions" title="Decisions"><span class="ico">⚖</span><span class="label">Decisions</span><span class="cnt" id="n-decisions"></span></a>
-  <a data-page="execution" title="Execution"><span class="ico">⇄</span><span class="label">Execution</span><span class="cnt" id="n-orders"></span></a>
+  <a data-page="overview" class="on" title="Overview"><span class="ico">▦</span><span class="label">Overview</span></a>
+  <a data-page="decisions" title="Decisions"><span class="ico">◧</span><span class="label">Decisions</span><span class="cnt" id="n-decisions"></span></a>
+  <a data-page="execution" title="Execution"><span class="ico">⇅</span><span class="label">Execution</span><span class="cnt" id="n-orders"></span></a>
 
   <div class="grp">Thinking</div>
-  <a data-page="research" title="Research"><span class="ico">◎</span><span class="label">Research</span><span class="cnt" id="n-news"></span></a>
-  <a data-page="agents" title="Agents"><span class="ico">⚙</span><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
+  <a data-page="research" title="Research"><span class="ico">◍</span><span class="label">Research</span><span class="cnt" id="n-news"></span></a>
+  <a data-page="agents" title="Agents"><span class="ico">⁂</span><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
 
   <div class="grp">Operations</div>
   <a data-page="money" title="Money"><span class="ico">▤</span><span class="label">Money</span><span class="cnt" id="n-spend"></span></a>
-  <a data-page="market" title="Market"><span class="ico">◈</span><span class="label">Market</span></a>
+  <a data-page="market" title="Market"><span class="ico">◪</span><span class="label">Market</span></a>
 
   <div class="fill"></div>
-  <button id="navtoggle" title="Collapse or expand the sidebar" aria-expanded="true">
-    <span class="ico" id="navtoggleico">⟨</span><span class="label">Collapse</span>
-  </button>
+
+  <div class="sidefoot">
+    <div class="sess" id="sess" title="US market session">
+      <span class="dot" id="sessdot"></span><span class="label" id="sesslabel">—</span>
+    </div>
+    <button id="theme" title="Light / dark / follow the system">
+      <span class="ico" id="themeico">◐</span><span class="label" id="themelabel">System</span>
+    </button>
+  </div>
 </nav>
 <div class="col">
 <header>
@@ -177,9 +268,9 @@
   <span class="tag" id="venue">—</span>
   <span class="spacer"></span>
   <span class="mono muted" id="clock"></span>
-  <button id="theme" title="Light / dark / follow the system">◐ Theme</button>
   <button id="halt" title="Stop all new orders immediately. Exits and stops keep working.">Kill switch</button>
 </header>
+<div class="ticker" id="ticker" hidden><div class="track" id="tickertrack"></div></div>
 <div id="modebar" class="notice" hidden></div>
 <main>
   <section class="page" id="page-overview">
@@ -362,14 +453,20 @@
   </section>
   <section class="page" id="page-market">
     <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Market</h2>
-    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">External charts. These are TradingView’s data, not ours.</p>
-    <div class="grid">
-  <section class="wide">
-    <h2>Market — TradingView</h2>
-    <div class="tv"><div class="tradingview-widget-container" style="height:100%">
-      <div id="tvchart" style="height:100%"></div>
-    </div></div>
-  </section>
+    <p class="muted" style="margin:0 0 .6rem;font-size:.82rem">
+      Charts and gauges are TradingView&rsquo;s data, not ours. Our own fills are on Overview.
+    </p>
+    <div class="sesbar" id="sesbar">
+      <span class="dot"></span>
+      <b id="sesbar-label">—</b>
+      <span class="muted" id="sesbar-next"></span>
+      <span class="spacer" style="flex:1"></span>
+      <span class="mono muted" id="sesbar-clock"></span>
+    </div>
+    <div class="mkt-grid">
+      <div class="mkt-chart"><div id="tvchart"></div></div>
+      <div class="mkt-side"><div id="tvgauge"></div></div>
+      <div class="mkt-tape"><div id="tvmovers"></div></div>
     </div>
   </section>
 </main>
@@ -469,8 +566,15 @@ const THEMES = ['system', 'light', 'dark'];
 function applyTheme(t) {
   if (t === 'system') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
-  const label = { system: '◐ System', light: '☀ Light', dark: '☾ Dark' };
-  $('theme').textContent = label[t];
+  const ico = { system: '◐', light: '☀', dark: '☾' };
+  const name = { system: 'System', light: 'Light', dark: 'Dark' };
+  $('themeico').textContent = ico[t];
+  $('themelabel').textContent = name[t];
+  $('theme').title = `Theme: ${name[t]} — click to change`;
+  // The chart is a third-party iframe and cannot read our CSS variables, so it
+  // has to be told separately. Rebuilt rather than messaged: the widget has no
+  // API for changing theme after construction.
+  if (window.__tvTheme && window.__tvTheme() !== t) buildWidgets();
   try { localStorage.setItem('aegis-theme', t); } catch { /* private mode */ }
 }
 function initTheme() {
@@ -511,7 +615,6 @@ function applyNav(collapsed) {
   btn.setAttribute('aria-expanded', String(!collapsed));
   btn.title = collapsed ? 'Expand the sidebar' : 'Collapse the sidebar';
   $('navtoggleico').textContent = collapsed ? '⟩' : '⟨';
-  btn.querySelector('.label').textContent = collapsed ? 'Expand' : 'Collapse';
   try { localStorage.setItem('aegis-nav', collapsed ? 'collapsed' : 'open'); } catch { /* private mode */ }
 }
 (function initNav() {
@@ -568,8 +671,67 @@ function renderBalances(s) {
   n('n-spend', cost(s.budget.spent));
 }
 
+/**
+ * Scrolling headline ticker.
+ *
+ * The track is written twice and the animation translates it by exactly -50%,
+ * so the loop closes seamlessly without measuring text widths — which would be
+ * wrong the moment a font loads late or the window resizes.
+ *
+ * Rebuilt only when the headlines actually change. Re-rendering on every
+ * three-second tick would restart the animation and make it stutter forever.
+ */
+let tickerKey = '';
+function renderTicker(s) {
+  const items = (s.news || []).slice(0, 14);
+  const el = $('ticker');
+  if (items.length === 0) { el.hidden = true; tickerKey = ''; return; }
+
+  const key = items.map((n) => n.id).join(',');
+  if (key === tickerKey) return;
+  tickerKey = key;
+
+  const one = (n) => {
+    const d = Number(n.direction);
+    const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '•';
+    const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted';
+    return `<span class="item"><span class="arw ${cls}">${arrow}</span>` +
+      `<b>${esc(n.symbol)}</b>${esc(String(n.title).slice(0, 96))}</span>`;
+  };
+  const half = items.map(one).join('');
+  $('tickertrack').innerHTML = half + half;
+  el.hidden = false;
+}
+
+/** Market open/closed, in the sidebar and on the Market page. */
+function renderSession(s) {
+  const m = s.session;
+  if (!m) return;
+  const cls = m.state === 'OPEN' ? 'open'
+    : m.state === 'PRE_MARKET' ? 'pre'
+    : m.state === 'AFTER_HOURS' ? 'after' : 'shut';
+
+  const chip = $('sess');
+  chip.className = 'sess ' + cls;
+  chip.title = `${m.label} · ${m.next} · ${m.exchangeTime}`;
+  $('sesslabel').textContent = m.label;
+
+  const bar = $('sesbar');
+  if (bar) {
+    bar.className = 'sesbar ' + cls;
+    $('sesbar-label').textContent = m.label;
+    const mins = m.minutesToChange;
+    const countdown = mins == null ? ''
+      : mins >= 60 ? ` · ${Math.floor(mins / 60)}h ${mins % 60}m` : ` · ${mins}m`;
+    $('sesbar-next').textContent = m.next + countdown;
+    $('sesbar-clock').textContent = m.exchangeTime;
+  }
+}
+
 function render(s) {
   renderBalances(s);
+  renderTicker(s);
+  renderSession(s);
   $('autonomy').textContent = s.autonomy;
   $('autonomy').className = 'tag ' + (s.autonomy === 'AUTO' ? 'auto' : 'shadow');
   const venues = s.venues && s.venues.length ? s.venues : [s.venue];
@@ -626,12 +788,13 @@ function render(s) {
   rows($('news'), s.news, (r) => {
     const d = Number(r.direction);
     const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted';
+    const row = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
     const acted = r.consumed ? esc(r.consumed_by || 'yes') : '—';
     const head = r.link
       ? `<a href="${esc(r.link)}" target="_blank" rel="noreferrer noopener">${esc(String(r.title).slice(0, 90))}</a>`
       : esc(String(r.title).slice(0, 90));
-    return `<tr><td><b>${esc(r.symbol)}</b></td><td><span class="pill">${esc(r.category)}</span></td>
-      <td class="num ${cls}">${d > 0 ? '+' : ''}${d.toFixed(2)}</td>
+    return `<tr class="${row}"><td><b>${esc(r.symbol)}</b></td><td><span class="pill">${esc(r.category)}</span></td>
+      <td class="num ${cls}">${d > 0 ? '▲ +' : d < 0 ? '▼ ' : ''}${d.toFixed(2)}</td>
       <td class="num">${r.confidence ?? '—'}</td>
       <td>${head}</td>
       <td class="muted">${esc(String(r.why).slice(0, 70))}</td>
@@ -723,16 +886,82 @@ es.addEventListener('snapshot', (e) => render(JSON.parse(e.data)));
 es.addEventListener('tick', (e) => render(JSON.parse(e.data)));
 es.addEventListener('halt', () => fetch('/api/snapshot').then((r) => r.json()).then(render));
 
-// TradingView widget — ships with its own data, no key required.
-const tv = document.createElement('script');
-tv.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-tv.async = true;
-tv.innerHTML = JSON.stringify({
-  autosize: true, symbol: 'NASDAQ:NVDA', interval: 'D', timezone: 'Etc/UTC',
-  theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
-  style: '1', locale: 'en', hide_side_toolbar: true, allow_symbol_change: true,
-});
-$('tvchart').appendChild(tv);
+/**
+ * TradingView widgets.
+ *
+ * Rebuilt wholesale on a theme change: each one is a third-party iframe that
+ * cannot read our CSS variables and offers no way to restyle after
+ * construction, so the only honest option is to tear it down and make a new
+ * one. Cheap, because it only happens when someone clicks the theme control.
+ */
+let tvBuiltWith = null;
+window.__tvTheme = () => tvBuiltWith;
+
+function resolvedTheme() {
+  const set = document.documentElement.getAttribute('data-theme');
+  if (set) return set;
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function widget(mountId, script, config) {
+  const host = $(mountId);
+  if (!host) return;
+  host.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'tradingview-widget-container';
+  wrap.style.height = '100%';
+  const inner = document.createElement('div');
+  inner.className = 'tradingview-widget-container__widget';
+  inner.style.height = '100%';
+  wrap.appendChild(inner);
+  const el = document.createElement('script');
+  el.src = `https://s3.tradingview.com/external-embedding/embed-widget-${script}.js`;
+  el.async = true;
+  el.innerHTML = JSON.stringify(config);
+  wrap.appendChild(el);
+  host.appendChild(wrap);
+}
+
+function buildWidgets() {
+  const theme = resolvedTheme();
+  tvBuiltWith = document.documentElement.getAttribute('data-theme') || 'system';
+  const symbol = 'NASDAQ:NVDA';
+
+  widget('tvchart', 'advanced-chart', {
+    autosize: true, symbol, interval: 'D', timezone: 'America/New_York',
+    theme, style: '1', locale: 'en', allow_symbol_change: true,
+    withdateranges: true, details: true, hide_side_toolbar: false,
+    // The indicators the operator asked for, on by default rather than hidden
+    // behind the chart's own menu.
+    studies: [
+      'STD;SMA',
+      'STD;RSI',
+      'STD;MACD',
+      'STD;Volume',
+    ],
+    support_host: 'https://www.tradingview.com',
+  });
+
+  widget('tvgauge', 'technical-analysis', {
+    interval: '1D', width: '100%', height: '100%', isTransparent: true,
+    symbol, showIntervalTabs: true, displayMode: 'single', locale: 'en', colorTheme: theme,
+  });
+
+  widget('tvmovers', 'market-overview', {
+    colorTheme: theme, dateRange: '1D', showChart: false, locale: 'en',
+    isTransparent: true, showSymbolLogo: true, width: '100%', height: '100%',
+    tabs: [{
+      title: 'Indices',
+      symbols: [
+        { s: 'FOREXCOM:SPXUSD', d: 'S&P 500' },
+        { s: 'FOREXCOM:NSXUSD', d: 'Nasdaq 100' },
+        { s: 'FOREXCOM:DJI', d: 'Dow 30' },
+        { s: 'CBOE:VIX', d: 'VIX' },
+      ],
+    }],
+  });
+}
+buildWidgets();
 </script>
 </body>
 </html>
