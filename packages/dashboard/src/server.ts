@@ -176,9 +176,22 @@ export class Dashboard {
       // reason for the trade, and a signal list showing only "news_signal NVDA
       // 77" makes the operator open the database to find out why.
       news: q(
+        // One row per story, not one per time it was read.
+        //
+        // Before the seen-set was persisted, a restart re-triaged everything:
+        // one Adobe headline produced thirteen rows at six different scores.
+        // The fix stops new duplicates; this stops the ones already recorded
+        // from filling the panel. Newest wins, because that is the score the
+        // trader would have acted on.
         `SELECT id, symbol, confidence, consumed, consumed_by, data, created_at
-         FROM agent_signals WHERE signal_type = 'news_signal'
-         ORDER BY id DESC LIMIT 25`,
+           FROM agent_signals
+          WHERE signal_type = 'news_signal'
+            AND id IN (
+              SELECT MAX(id) FROM agent_signals
+               WHERE signal_type = 'news_signal'
+               GROUP BY COALESCE(json_extract(data, '$.newsId'), json_extract(data, '$.title'))
+            )
+          ORDER BY id DESC LIMIT 25`,
       ).map((r) => {
         const row = r as { data: string } & Record<string, unknown>;
         let d: Record<string, unknown> = {};

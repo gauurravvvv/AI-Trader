@@ -241,3 +241,16 @@ CREATE TABLE IF NOT EXISTS provenance (
 );
 CREATE INDEX IF NOT EXISTS idx_prov_decision ON provenance (decision_id);
 CREATE INDEX IF NOT EXISTS idx_prov_degraded ON provenance (degraded, kind);
+
+-- Headlines already offered to the triage model.
+--
+-- In a Map this was per-process, so every restart re-read the same stories:
+-- one Adobe headline was triaged thirteen times, at six different scores,
+-- because a restart is indistinguishable from a fresh story to an in-memory
+-- set. Persisting it makes "already seen" mean what it says.
+CREATE TABLE IF NOT EXISTS seen_news (
+  news_id TEXT PRIMARY KEY,
+  symbol TEXT,
+  first_seen TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_seen_news_at ON seen_news (first_seen);

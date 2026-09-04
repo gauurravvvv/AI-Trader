@@ -265,3 +265,54 @@ describe('ordering determinism', () => {
     expect(prompt.indexOf('NVDA newer story')).toBeLessThan(prompt.indexOf('NVDA older story'));
   });
 });
+
+describe('dedupe survives a restart', () => {
+  it('does not re-triage a story a previous process already read', async () => {
+    // The Map version could not tell a restart from a new story, so one Adobe
+    // headline went to the model thirteen times at six different scores.
+    const corpus = { NVDA: [story('NVDA', 'stable-id', 'Nvidia wins a contract')] };
+    const askA = vi.fn(reply('{"items":[]}'));
+    await new NewsScoutAgent(deps({ news: fakeNews(corpus), ask: askA })).execute();
+    expect(askA).toHaveBeenCalledTimes(1);
+
+    // A brand new source AND a new agent — i.e. a restarted daemon — against
+    // the same database.
+    const askB = vi.fn(reply('{"items":[]}'));
+    await new NewsScoutAgent(deps({ news: fakeNews(corpus), ask: askB })).execute();
+    expect(askB).not.toHaveBeenCalled();
+  });
+
+  it('records each story once, however many times it is offered', async () => {
+    const corpus = { NVDA: [story('NVDA', 'dupe', 'x')] };
+    for (let i = 0; i < 3; i += 1) {
+      await new NewsScoutAgent(deps({ news: fakeNews(corpus), ask: reply('{"items":[]}') })).execute();
+    }
+    const n = db.prepare(`SELECT COUNT(*) c FROM seen_news WHERE news_id = 'dupe'`).get();
+    expect(n).toEqual({ c: 1 });
+  });
+
+  it('still reads a genuinely new story after an old one is seen', async () => {
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: [story('NVDA', 'first', 'a')] }), ask: reply('{"items":[]}'),
+    })).execute();
+    const ask = vi.fn(reply('{"items":[]}'));
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: [story('NVDA', 'first', 'a'), story('NVDA', 'second', 'b')] }), ask,
+    })).execute();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask.mock.calls[0]![0]).toContain('b');
+    expect(ask.mock.calls[0]![0]).not.toContain('0. a');
+  });
+
+  it('forgets stories older than the retention window', async () => {
+    db.prepare(
+      `INSERT INTO seen_news (news_id, symbol, first_seen) VALUES ('ancient','NVDA', datetime('now','-30 days'))`,
+    ).run();
+    await new NewsScoutAgent(deps({
+      news: fakeNews({ NVDA: [story('NVDA', 'ancient', 'back again')] }), ask: reply('{"items":[]}'),
+    })).execute();
+    // Purged, so it counts as new again — and the row is re-created.
+    const rows = db.prepare(`SELECT first_seen FROM seen_news WHERE news_id='ancient'`).all();
+    expect(rows).toHaveLength(1);
+  });
+});

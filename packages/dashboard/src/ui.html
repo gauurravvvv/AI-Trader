@@ -44,8 +44,14 @@
      colour wherever a row had no cell to fill, so an odd number of panels
      produced a large grey rectangle that looked like a broken widget.
      align-items:start stops a short panel being stretched to match a tall one. */
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));
-    gap:.7rem;align-items:start;align-content:start;background:none}
+  /* Two columns, not as many as fit.
+     auto-fit produced four 438px columns on a wide screen, so a two-panel page
+     put one card in column one, one in column two, and left half the row empty
+     — which is the blank space, not a bug in the cards. Two wide columns pair
+     the panels and give the tables room they actually use. */
+  .grid{display:grid;grid-template-columns:1fr;gap:.7rem;
+    align-items:start;align-content:start;background:none}
+  @media (min-width:1080px){ .grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
   section{background:var(--paper);border:1px solid var(--rule2);border-radius:8px;
     padding:.85rem 1rem;min-width:0}
   section.wide{grid-column:1/-1}
@@ -84,16 +90,31 @@
   /* App shell. The sidebar owns the full viewport height and the content
      column scrolls independently beside it, so the nav is always reachable
      without scrolling back to the top. */
-  /* The width snaps rather than glides, deliberately.
-     `transition: grid-template-columns` did nothing at all — an unregistered
-     custom property is an untyped token with nothing to interpolate, so the
-     attribute flipped, the labels hid, and the rail stayed 208px wide.
-     Registering --sw with @property fixed that but produced a transition that
-     sat still for 400ms and then took over a second to finish. An instant
-     toggle has no failure mode and is what most shells do anyway. */
+  /* --sw is REGISTERED, which is what makes it animatable: an unregistered
+     custom property is an untyped token, and a transition over it silently does
+     nothing at all — the attribute flips, the labels hide, and the rail stays
+     at its old width. Typed as a <length> it interpolates properly.
+     The transition goes on the grid column, not on --sw at :root; the latter
+     stalled for 400ms and then crawled for over a second. */
+  @property --sw { syntax: '<length>'; inherits: true; initial-value: 208px }
   :root{--sw:208px}
   :root[data-nav=collapsed]{--sw:58px}
-  .app{display:grid;grid-template-columns:var(--sw) 1fr;height:100vh;overflow:hidden}
+  .app{display:grid;grid-template-columns:var(--sw) 1fr;height:100vh;overflow:hidden;
+    transition:grid-template-columns .18s cubic-bezier(.4,0,.2,1)}
+  /* The handle rides the same curve so it stays welded to the divider. */
+  #navtoggle{transition:left .18s cubic-bezier(.4,0,.2,1),
+    background .12s ease,color .12s ease,border-color .12s ease}
+  /* Labels fade rather than vanish, so the rail does not appear to flicker. */
+  nav.side a .label,nav.side .cnt,nav.side .bname,#theme .label,.sess .label{
+    transition:opacity .12s ease}
+  :root[data-nav=collapsed] nav.side a .label,
+  :root[data-nav=collapsed] nav.side .cnt,
+  :root[data-nav=collapsed] nav.side .bname,
+  :root[data-nav=collapsed] #theme .label,
+  :root[data-nav=collapsed] .sess .label{opacity:0}
+  @media (prefers-reduced-motion:reduce){
+    .app,#navtoggle,nav.side a .label{transition:none}
+  }
   .col{display:flex;flex-direction:column;height:100vh;overflow-y:auto;min-width:0}
 
   nav.side{height:100vh;overflow-y:auto;overflow-x:hidden;background:var(--bar);
@@ -266,7 +287,12 @@
     overflow:hidden;min-height:0}
   .mkt-tape{grid-column:2;grid-row:2;border:1px solid var(--rule);border-radius:6px;
     overflow:hidden;min-height:0}
-  .mkt-chart > div,.mkt-side > div,.mkt-tape > div{height:100%}
+  .mkt-head{padding:.45rem .7rem;border-bottom:1px solid var(--rule2);
+    font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink3);background:var(--sunk);flex:0 0 auto}
+  .mkt-chart,.mkt-side,.mkt-tape{display:flex;flex-direction:column}
+  .mkt-chart > div:last-child,.mkt-side > div:last-child,.mkt-tape > div:last-child{
+    flex:1 1 auto;min-height:0}
   @media (max-width:1000px){
     .mkt-grid{grid-template-columns:1fr;grid-template-rows:420px 300px 230px}
     .mkt-chart{grid-column:1;grid-row:1}
@@ -277,11 +303,14 @@
     padding:.55rem .75rem;margin:0 0 .7rem;border:1px solid var(--rule2);
     border-radius:6px;background:var(--sunk);font-size:.82rem}
   .sesbar .dot{width:9px;height:9px;border-radius:50%;background:var(--ink3)}
-  .symbolpick{display:flex;align-items:center;gap:.45rem;font-size:.8rem}
+  .symbolpick{display:flex;align-items:center;gap:.4rem;font-size:.8rem;
+    background:var(--paper);border:1px solid var(--rule);border-radius:6px;
+    padding:.1rem .5rem}
+  .symbolpick:focus-within{border-color:var(--accent);
+    box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+  .symbolpick svg{width:14px;height:14px;color:var(--ink3);flex:0 0 auto}
   .symbolpick input{font:inherit;font-size:.82rem;font-family:ui-monospace,monospace;
-    background:var(--paper);color:var(--ink);border:1px solid var(--rule);
-    border-radius:5px;padding:.24rem .5rem}
-  .symbolpick input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+    background:none;color:var(--ink);border:0;padding:.28rem 0;outline:none}
   .sesbar.open .dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
   .sesbar.pre .dot,.sesbar.after .dot{background:var(--warn)}
   footer{padding:.85rem 1.25rem;color:var(--ink3);font-size:.72rem;
@@ -556,19 +585,19 @@
     </table></div>
   </section>
 
-  <section class="wide">
-    <h2>Agent activity</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Agent</th><th>Action</th><th>Symbol</th><th>Detail</th><th>When</th></tr></thead>
-      <tbody id="logs"></tbody>
-    </table></div>
-  </section>
-
   <section>
     <h2>Notifications</h2>
     <div class="scroll"><table>
       <thead><tr><th>Kind</th><th>Subject</th><th>Status</th><th>When</th></tr></thead>
       <tbody id="notifications"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Agent activity</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Agent</th><th>Action</th><th>Symbol</th><th>Detail</th><th>When</th></tr></thead>
+      <tbody id="logs"></tbody>
     </table></div>
   </section>
     </div>
@@ -583,18 +612,27 @@
       <b id="sesbar-label">—</b>
       <span class="muted" id="sesbar-next"></span>
       <span class="spacer" style="flex:1"></span>
-      <label class="symbolpick">
-        <span class="muted">Symbol</span>
+      <label class="symbolpick" title="Type any TradingView symbol, or pick from the list. Drives every panel on this page.">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-research"/></svg>
         <input id="symbolsel" list="symbollist" spellcheck="false" autocomplete="off"
-               placeholder="NASDAQ:NVDA" size="18">
+               placeholder="Search symbol…" size="20" aria-label="Chart symbol">
         <datalist id="symbollist"></datalist>
       </label>
       <span class="mono muted" id="sesbar-clock"></span>
     </div>
     <div class="mkt-grid">
-      <div class="mkt-chart"><div id="tvchart"></div></div>
-      <div class="mkt-side"><div id="tvgauge"></div></div>
-      <div class="mkt-tape"><div id="tvmovers"></div></div>
+      <div class="mkt-chart">
+        <div class="mkt-head"><span id="mkt-chart-title">Chart</span></div>
+        <div id="tvchart"></div>
+      </div>
+      <div class="mkt-side">
+        <div class="mkt-head"><span id="mkt-gauge-title">Technical analysis</span></div>
+        <div id="tvgauge"></div>
+      </div>
+      <div class="mkt-tape">
+        <div class="mkt-head"><span>Indices &amp; volatility</span></div>
+        <div id="tvmovers"></div>
+      </div>
     </div>
   </section>
 </main>
@@ -610,7 +648,42 @@
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 2) => Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const cost = (n) => { const v = Number(n); return v === 0 ? '$0' : v < 0.001 ? '$' + v.toFixed(6) : v < 1 ? '$' + v.toFixed(4) : '$' + v.toFixed(2); };
-const when = (s) => s ? String(s).replace('T', ' ').slice(0, 19) : '—';
+/**
+ * Every timestamp on this page is shown in IST.
+ *
+ * The database holds two shapes: SQLite's `datetime('now')` writes
+ * "2026-09-04 11:48:24" with no zone marker but is UTC, while the ledger writes
+ * full ISO with a Z. Appending Z to the bare form is what makes them agree —
+ * without it the browser reads the first as local and the two sources land
+ * hours apart in the same column.
+ */
+const IST = 'Asia/Kolkata';
+const istFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: IST, year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+});
+const istClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: IST, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+});
+
+function asUtc(raw) {
+  const t = String(raw).trim();
+  if (t === '') return null;
+  // "YYYY-MM-DD HH:MM:SS" from SQLite is UTC but says so nowhere.
+  const iso = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(t)
+    ? t.replace(' ', 'T') + 'Z'
+    : t;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const when = (s) => {
+  if (!s) return '—';
+  const d = asUtc(s);
+  if (d === null) return String(s).slice(0, 19);
+  const p = Object.fromEntries(istFmt.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+};
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const rows = (el, data, fn, cols) => {
   el.innerHTML = data.length
@@ -865,7 +938,7 @@ function renderSession(s) {
     const countdown = mins == null ? ''
       : mins >= 60 ? ` · ${Math.floor(mins / 60)}h ${mins % 60}m` : ` · ${mins}m`;
     $('sesbar-next').textContent = m.next + countdown;
-    $('sesbar-clock').textContent = m.exchangeTime;
+    $('sesbar-clock').textContent = `${m.exchangeTime}  ·  ${istClock.format(new Date())} IST`;
   }
 }
 
@@ -1020,7 +1093,7 @@ $('halt').onclick = async () => {
   await fetch('/api/halt', { method: 'POST' });
 };
 
-setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+setInterval(() => { $('clock').textContent = istClock.format(new Date()) + ' IST'; }, 1000);
 
 const es = new EventSource('/events');
 es.addEventListener('snapshot', (e) => render(JSON.parse(e.data)));
@@ -1158,6 +1231,13 @@ function buildWidgets() {
   tvBuiltWith = document.documentElement.getAttribute('data-theme') || 'system';
   initSymbolPicker();
   const symbol = currentSymbol();
+  // Name the symbol on each panel. The gauge in particular used to be a chart
+  // of numbers with no indication of what it described.
+  const short = symbol.split(':').pop() ?? symbol;
+  const chartTitle = $('mkt-chart-title');
+  const gaugeTitle = $('mkt-gauge-title');
+  if (chartTitle) chartTitle.textContent = `Chart — ${short}`;
+  if (gaugeTitle) gaugeTitle.textContent = `Technical analysis — ${short}`;
 
   widget('tvchart', 'advanced-chart', {
     autosize: true, symbol, interval: 'D', timezone: 'America/New_York',

@@ -5,6 +5,9 @@ import type { PipelineDeps } from './agents.js';
 
 export const SIG_NEWS = 'news_signal';
 
+/** Stories older than this are forgotten, so the table cannot grow forever. */
+const SEEN_RETENTION_DAYS = 14;
+
 export interface NewsDeps extends PipelineDeps {
   news: YahooNewsSource;
   /** Minutes between sweeps. Directly proportional to monthly spend. */
@@ -127,6 +130,32 @@ export class NewsScoutAgent extends BaseAgent {
   }
 
   /**
+   * Has this story never been offered to the model before?
+   *
+   * Recorded in the database, not a Map. An in-memory set cannot tell a
+   * restart from a new story, so every restart re-triaged everything: one
+   * Adobe headline went through thirteen times, at six different scores,
+   * because the scorer is not deterministic either. Both the waste and the
+   * contradictory data came from the same missing row.
+   *
+   * INSERT OR IGNORE returns changes=0 when the id is already there, so the
+   * check and the claim are one statement and two ticks cannot race.
+   */
+  private firstSight(newsId: string, symbol: string): boolean {
+    const r = this.db
+      .prepare('INSERT OR IGNORE INTO seen_news (news_id, symbol) VALUES (?, ?)')
+      .run(newsId, symbol);
+    return r.changes > 0;
+  }
+
+  /** Forget old stories so the table stays bounded. */
+  private forgetOld(): void {
+    this.db
+      .prepare(`DELETE FROM seen_news WHERE first_seen < datetime('now', ?)`)
+      .run(`-${String(SEEN_RETENTION_DAYS)} days`);
+  }
+
+  /**
    * New, recent, relevant headlines across the whole universe.
    *
    * Collected per symbol, then interleaved round-robin before the cap is
@@ -137,6 +166,7 @@ export class NewsScoutAgent extends BaseAgent {
    * symbol gets its second.
    */
   private async gather(): Promise<NewsItem[]> {
+    this.forgetOld();
     const cap = this.n.batchCap ?? 14;
     const maxAge = this.n.maxAgeHours ?? 36;
 
@@ -147,7 +177,7 @@ export class NewsScoutAgent extends BaseAgent {
         this.log.event(this.name, `${entry.symbol}: no attributable news`);
         continue;
       }
-      const fresh = newestFirst(withinHours(items, maxAge)).filter((i) => this.n.news.isNew(i.id));
+      const fresh = newestFirst(withinHours(items, maxAge)).filter((i) => this.firstSight(i.id, i.symbol));
       if (fresh.length > 0) perSymbol.push(fresh);
     }
     // With the default cap every symbol gets a slot in the first round. Say so
