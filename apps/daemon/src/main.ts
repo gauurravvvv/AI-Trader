@@ -5,7 +5,7 @@ import { BudgetGovernor } from '@aegis/budget';
 import { SignalBus, Orchestrator, startHeartbeat, type AgentDeps } from '@aegis/agents';
 import { setConcurrency } from '@aegis/claude';
 import { SimAdapter, US_COSTS } from '@aegis/brokers';
-import { YahooPriceSource, YahooConsensus } from '@aegis/marketdata';
+import { YahooPriceSource, YahooConsensus, YahooNewsSource } from '@aegis/marketdata';
 import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
 import { EdgarClient } from '@aegis/edgar';
@@ -15,9 +15,11 @@ import {
   EdgarPollerAgent,
   EarningsReaderAgent,
   PositionGuardianAgent,
+  NewsScoutAgent,
   DailySummary,
   universeFor,
   type PipelineDeps,
+  type NewsDeps,
 } from '@aegis/pipeline';
 
 const cfg = loadConfig(process.env);
@@ -52,6 +54,7 @@ setConcurrency(cfg.claudeConcurrency);
 // ── Market data and venue. Both keyless: no signup, no API key. ──
 const prices = new YahooPriceSource();
 const consensus = new YahooConsensus();
+const news = new YahooNewsSource();
 const adapter = new SimAdapter(
   'sim-us',
   'US',
@@ -125,6 +128,16 @@ const pipelineDeps: PipelineDeps = {
   notify: raise,
 };
 
+// News is the only alpha source that reaches all three markets: crypto has no
+// regulator to file with and Indian results go to the exchanges, not the SEC.
+// The scout therefore watches the full universe even though only the US names
+// have a trading venue wired so far.
+const newsDeps: NewsDeps = {
+  ...pipelineDeps,
+  news,
+  universe: universeFor(['US', 'CRYPTO', 'IN']),
+};
+
 // One summary per calendar day, idempotent on the day rather than on a timer,
 // so a restart cannot produce a second one.
 const daily = new DailySummary(db, budget, adapter.venue, raise);
@@ -135,6 +148,7 @@ orchestrator.register(new EarningsReaderAgent(pipelineDeps), 10_000);
 // Runs regardless of budget tier: the Governor may stop us opening a position,
 // it must never stop us closing one.
 orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 20_000);
+orchestrator.register(new NewsScoutAgent(newsDeps), 30_000);
 
 const dashboard = new Dashboard({
   db,
@@ -165,7 +179,11 @@ log.event(
 );
 log.event(
   'daemon',
-  `universe ${String(pipelineDeps.universe.length)} US names · SUE gate ${String(cfg.sueThreshold)} · audit floor ${String(cfg.auditFloor)}`,
+  `earnings universe ${String(pipelineDeps.universe.length)} US names · SUE gate ${String(cfg.sueThreshold)} · audit floor ${String(cfg.auditFloor)}`,
+);
+log.event(
+  'daemon',
+  `news universe ${String(newsDeps.universe.length)} names across US, crypto and India`,
 );
 if (isHalted(db)) log.warn('daemon', 'system is HALTED — clear it to resume trading');
 if (autonomy === 'SHADOW') {

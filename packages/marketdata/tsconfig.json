@@ -1,6 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist" },
-  "include": ["src/**/*"],
-  "references": [{ "path": "../brokers" }]
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../brokers"
+    },
+    {
+      "path": "../config"
+    }
+  ]
 }

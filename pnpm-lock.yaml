@@ -92,6 +92,9 @@ importers:
       '@aegis/claude':
         specifier: workspace:*
         version: link:../claude
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
       '@aegis/edgar':
         specifier: workspace:*
         version: link:../edgar
@@ -181,6 +184,9 @@ importers:
       '@aegis/brokers':
         specifier: workspace:*
         version: link:../brokers
+      '@aegis/config':
+        specifier: workspace:*
+        version: link:../config
       decimal.js:
         specifier: ^10.4.3
         version: 10.6.0

@@ -22,6 +22,9 @@
     },
     {
       "path": "../marketdata"
+    },
+    {
+      "path": "../db"
     }
   ]
 }

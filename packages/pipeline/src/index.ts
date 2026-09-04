@@ -8,3 +8,5 @@ export { PositionGuardianAgent, evaluateExit, pnlPct, DRIFT_EXIT } from './guard
 export type { ExitRule, ExitReason, ExitDecision } from './guardian.js';
 export { DailySummary, collectSummary, summaryBody } from './summary.js';
 export type { DaySummary } from './summary.js';
+export { NewsScoutAgent, SIG_NEWS } from './news.js';
+export type { NewsDeps, ScoutedStory } from './news.js';
