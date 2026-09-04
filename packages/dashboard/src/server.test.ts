@@ -155,3 +155,71 @@ describe('panels that were collecting data but showing none', () => {
     expect(rows[0]).toMatchObject({ kind: 'ORDER_FILLED', status: 'pending' });
   });
 });
+
+describe('balances', () => {
+  function withAccount(equity: string, cash: string): Dashboard {
+    const d = new Dashboard({
+      db, port: PORT + 2, monthlyBudgetUsd: 100, autonomy: 'AUTO', venue: 'sim-us',
+      account: () => ({ equity, cash }),
+    });
+    return d;
+  }
+
+  function position(symbol: string, qty: string, avgCost: string, realised = '0'): void {
+    db.prepare(
+      `INSERT INTO positions (venue, symbol, qty, avg_cost, realised_pnl, opened_at)
+       VALUES ('sim-us', ?, ?, ?, ?, datetime('now'))`,
+    ).run(symbol, qty, avgCost, realised);
+  }
+
+  it('reports nothing rather than zero when the venue has not answered', () => {
+    // "Unknown" and "nothing" are different. Showing 0% deployed on a full book
+    // is worse than showing nothing at all.
+    const b = dash.snapshot()['balances'] as Record<string, unknown>;
+    expect(b['equity']).toBeNull();
+    expect(b['deployedPct']).toBeNull();
+  });
+
+  it('separates long and short exposure', () => {
+    position('NVDA', '100', '150');
+    position('META', '-20', '500');
+    const d = withAccount('100000', '80000');
+    const b = d.snapshot()['balances'] as Record<string, unknown>;
+    expect(b['longNotional']).toBe('15000.00');
+    expect(b['shortNotional']).toBe('10000.00');
+    expect(b['openPositions']).toBe(2);
+    d.stop();
+  });
+
+  it('counts a short as invested, not as negative investment', () => {
+    // A short ties up margin and carries risk; netting it against longs would
+    // report a hedged book as flat.
+    position('META', '-20', '500');
+    const d = withAccount('100000', '110000');
+    expect((d.snapshot()['balances'] as Record<string, unknown>)['invested']).toBe('10000.00');
+    d.stop();
+  });
+
+  it('reports how much of the account is deployed', () => {
+    position('NVDA', '100', '250');
+    const d = withAccount('100000', '75000');
+    const b = d.snapshot()['balances'] as Record<string, number>;
+    expect(b['deployedPct']).toBeCloseTo(25, 1);
+    d.stop();
+  });
+
+  it('sums realised P&L across closed and open positions', () => {
+    position('NVDA', '0', '100', '250.50');
+    position('AMD', '10', '50', '-40');
+    const d = withAccount('100000', '99000');
+    expect((d.snapshot()['balances'] as Record<string, unknown>)['realised']).toBe('210.50');
+    d.stop();
+  });
+
+  it('does not divide by a zero equity', () => {
+    position('NVDA', '10', '100');
+    const d = withAccount('0', '0');
+    expect((d.snapshot()['balances'] as Record<string, unknown>)['deployedPct']).toBeNull();
+    d.stop();
+  });
+});

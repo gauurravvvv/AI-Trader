@@ -15,6 +15,14 @@ export interface DashboardDeps {
   venue: string;
   /** Every venue actually being traded. The header showed only the first. */
   venues?: string[];
+  /**
+   * Live account figures.
+   *
+   * Cash lives in the adapter, not the database, so the dashboard cannot
+   * compute it — without this the page can show what is invested but not what
+   * is left, which is the number an operator actually wants.
+   */
+  account?: () => { equity: string; cash: string } | null;
   onHaltChange?: (halted: boolean) => void;
 }
 
@@ -65,6 +73,51 @@ export class Dashboard {
       // Below this the numbers above are noise, and the UI says so rather than
       // rendering a confident-looking percentage.
       meaningful: p.trades >= 20,
+    };
+  }
+
+  /**
+   * Money, from both sides: what the venue says we have and what the ledger
+   * says we hold. Unrealised is marked at the last fill price rather than the
+   * live quote — the dashboard must not fire a network request per position on
+   * a three-second poll.
+   */
+  private balances(): Record<string, unknown> {
+    const rows = this.deps.db
+      .prepare(
+        `SELECT symbol, qty, avg_cost FROM positions WHERE CAST(qty AS REAL) != 0`,
+      )
+      .all() as { symbol: string; qty: string; avg_cost: string }[];
+
+    let longNotional = 0;
+    let shortNotional = 0;
+    for (const r of rows) {
+      const q = Number(r.qty);
+      const v = Math.abs(q) * Number(r.avg_cost);
+      if (q > 0) longNotional += v;
+      else shortNotional += v;
+    }
+
+    const acct = this.deps.account?.() ?? null;
+    const realised = this.deps.db
+      .prepare(`SELECT COALESCE(SUM(CAST(realised_pnl AS REAL)), 0) v FROM positions`)
+      .get() as { v: number };
+
+    return {
+      equity: acct?.equity ?? null,
+      cash: acct?.cash ?? null,
+      invested: (longNotional + shortNotional).toFixed(2),
+      longNotional: longNotional.toFixed(2),
+      shortNotional: shortNotional.toFixed(2),
+      openPositions: rows.length,
+      realised: realised.v.toFixed(2),
+      // Null rather than zero when the venue has not reported: "unknown" and
+      // "nothing" are different, and showing 0% deployed on a full book is worse
+      // than showing nothing at all.
+      deployedPct:
+        acct === null || Number(acct.equity) <= 0
+          ? null
+          : ((longNotional + shortNotional) / Number(acct.equity)) * 100,
     };
   }
 
@@ -144,6 +197,7 @@ export class Dashboard {
           why: d['why'] ?? '',
         };
       }),
+      balances: this.balances(),
       performance: this.performance(),
       equity: equityCurve(this.deps.db),
       // Everything below was being collected and never shown. An agent whose

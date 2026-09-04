@@ -174,6 +174,18 @@ orchestrator.register(new EntryLadderAgent({ ...pipelineDeps, prices, router }),
 orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 60_000);
 orchestrator.register(new ReflectorAgent({ ...pipelineDeps, prices }), 90_000);
 
+// The venue's own view of the account, refreshed at most once a second.
+let acctCache: { at: number; value: { equity: string; cash: string } } | null = null;
+const accountSnapshot = (): { equity: string; cash: string } | null => {
+  if (acctCache && Date.now() - acctCache.at < 1000) return acctCache.value;
+  return acctCache?.value ?? null;
+};
+setInterval(() => {
+  void adapter.getAccount().then((a) => {
+    acctCache = { at: Date.now(), value: { equity: a.equity, cash: a.cash } };
+  });
+}, 2000).unref();
+
 const dashboard = new Dashboard({
   db,
   port: cfg.dashboardPort,
@@ -181,6 +193,9 @@ const dashboard = new Dashboard({
   autonomy,
   venue: adapter.venue,
   venues: [adapter.venue],
+  // Cash is the adapter's, not the database's. Cached for a second so a
+  // three-second dashboard poll does not re-mark every position each time.
+  account: accountSnapshot,
   onHaltChange: (h) => {
     log.warn('dashboard', h ? 'KILL SWITCH ENGAGED from the dashboard' : 'halt cleared');
     notifier.enqueue({

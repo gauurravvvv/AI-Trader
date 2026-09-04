@@ -56,6 +56,38 @@
   td.num,th.num{text-align:right}
   .muted{color:var(--ink3)}
   .pos{color:var(--ok)} .neg{color:var(--flag)} .warnc{color:var(--warn)}
+
+  /* Sidebar layout. Grid rather than fixed positioning so the main column
+     scrolls independently and the nav never covers content on a short window. */
+  .shell{display:grid;grid-template-columns:206px 1fr;min-height:calc(100vh - 58px)}
+  nav.side{border-right:1px solid var(--rule);background:var(--bar);padding:.8rem .5rem;
+    position:sticky;top:58px;align-self:start;max-height:calc(100vh - 58px);overflow-y:auto}
+  nav.side a{display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+    padding:.44rem .6rem;border-radius:4px;color:var(--ink2);text-decoration:none;
+    font-size:.86rem;margin-bottom:1px;cursor:pointer}
+  nav.side a:hover{background:var(--sunk);color:var(--ink)}
+  nav.side a.on{background:var(--paper);color:var(--ink);font-weight:600;
+    box-shadow:inset 2px 0 0 var(--accent)}
+  nav.side .grp{font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink3);padding:.9rem .6rem .3rem}
+  nav.side .cnt{font-size:.72rem;color:var(--ink3);font-variant-numeric:tabular-nums}
+  main{padding:1rem 1.25rem;min-width:0}
+  .page{display:none} .page.on{display:block}
+  .page > h2:first-child{margin-top:0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:.7rem;
+    margin:0 0 1rem}
+  .card{background:var(--sunk);border:1px solid var(--rule2);border-radius:6px;padding:.7rem .8rem}
+  .card b{display:block;font-size:1.35rem;line-height:1.15;font-variant-numeric:tabular-nums;
+    margin-top:.15rem}
+  .card span{font-size:.72rem;color:var(--ink3);letter-spacing:.03em;text-transform:uppercase}
+  .card small{display:block;font-size:.72rem;color:var(--ink3);margin-top:.2rem}
+  @media (max-width:800px){
+    .shell{grid-template-columns:1fr}
+    nav.side{position:static;max-height:none;display:flex;flex-wrap:wrap;gap:.25rem;
+      border-right:0;border-bottom:1px solid var(--rule)}
+    nav.side .grp{display:none}
+    nav.side a{margin:0}
+  }
   .notice{margin:0;padding:.7rem 1.25rem;border-bottom:1px solid var(--rule2);
     background:var(--sunk);color:var(--ink2);font-size:.84rem}
   .notice b{color:var(--ink)}
@@ -88,21 +120,32 @@
 
 <div id="modebar" class="notice" hidden></div>
 
-<div class="grid">
-  <section>
-    <h2>Budget — programmatic credit</h2>
-    <div class="kv">
-      <div><span>Spent</span><b id="bspent">$0</b></div>
-      <div><span>Cap</span><b id="bcap">$0</b></div>
-      <div><span>Tier</span><b id="btier">—</b></div>
+<div class="shell">
+<nav class="side" id="nav">
+  <div class="grp">Trading</div>
+  <a data-page="overview" class="on">Overview</a>
+  <a data-page="decisions">Decisions <span class="cnt" id="n-decisions"></span></a>
+  <a data-page="execution">Execution <span class="cnt" id="n-orders"></span></a>
+  <div class="grp">Thinking</div>
+  <a data-page="research">Research <span class="cnt" id="n-news"></span></a>
+  <a data-page="agents">Agents <span class="cnt" id="n-signals"></span></a>
+  <div class="grp">Operations</div>
+  <a data-page="money">Money <span class="cnt" id="n-spend"></span></a>
+  <a data-page="market">Market</a>
+</nav>
+<main>
+  <section class="page" id="page-overview">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Overview</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">Money, exposure and what the system is doing right now.</p>
+    <div class="cards">
+      <div class="card"><span>Total equity</span><b id="c-equity">—</b><small id="c-equity-sub">cash + positions</small></div>
+      <div class="card"><span>Available cash</span><b id="c-cash">—</b><small id="c-cash-sub">free to deploy</small></div>
+      <div class="card"><span>Invested</span><b id="c-invested">—</b><small id="c-invested-sub">at cost</small></div>
+      <div class="card"><span>Realised P&amp;L</span><b id="c-realised">—</b><small id="c-realised-sub">closed trades</small></div>
+      <div class="card"><span>Open positions</span><b id="c-open">—</b><small id="c-open-sub">long / short</small></div>
+      <div class="card"><span>Model spend</span><b id="c-spend">—</b><small id="c-spend-sub">this cycle</small></div>
     </div>
-    <div class="gauge" id="bgauge"><i style="width:0%"></i></div>
-    <div class="scroll"><table>
-      <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Avg ms</th></tr></thead>
-      <tbody id="costs"></tbody>
-    </table></div>
-  </section>
-
+    <div class="grid">
   <section class="wide">
     <h2>Realised equity <span class="muted" id="eqnote"></span></h2>
     <div id="eqwrap" style="overflow-x:auto">
@@ -135,7 +178,12 @@
       <tbody id="positions"></tbody>
     </table></div>
   </section>
-
+    </div>
+  </section>
+  <section class="page" id="page-decisions">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Decisions</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">Every trade the system considered, and why it did or did not act.</p>
+    <div class="grid">
   <section class="wide">
     <h2>Decisions — reasoning chain</h2>
     <div class="scroll"><table>
@@ -145,6 +193,43 @@
     </table></div>
   </section>
 
+  <section class="wide">
+    <h2>Staged entries — the ladder</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Symbol</th><th>Venue</th><th>Side</th>
+        <th class="num">Rungs placed</th><th>Status</th><th>Why it stopped</th><th>Updated</th></tr></thead>
+      <tbody id="plans"></tbody>
+    </table></div>
+  </section>
+    </div>
+  </section>
+  <section class="page" id="page-research">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Research</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">What the agents read and concluded before deciding anything.</p>
+    <div class="grid">
+  <section class="wide">
+    <h2>News — what the scout read</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th>Category</th><th class="num">Dir</th><th class="num">Score</th>
+        <th>Headline</th><th>Why</th><th>Acted on</th></tr></thead>
+      <tbody id="news"></tbody>
+    </table></div>
+  </section>
+
+  <section class="wide">
+    <h2>Lessons — what the Reflector concluded</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Symbol</th><th>From</th><th>Verdict</th><th class="num">Alpha</th>
+        <th>Category</th><th>Lesson</th></tr></thead>
+      <tbody id="lessons"></tbody>
+    </table></div>
+  </section>
+    </div>
+  </section>
+  <section class="page" id="page-execution">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Execution</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">Orders sent to the venue and what came back.</p>
+    <div class="grid">
   <section>
     <h2>Orders</h2>
     <div class="scroll"><table>
@@ -161,41 +246,6 @@
     </table></div>
   </section>
 
-  <section class="wide">
-    <h2>News — what the scout read</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Symbol</th><th>Category</th><th class="num">Dir</th><th class="num">Score</th>
-        <th>Headline</th><th>Why</th><th>Acted on</th></tr></thead>
-      <tbody id="news"></tbody>
-    </table></div>
-  </section>
-
-  <section class="wide">
-    <h2>Staged entries — the ladder</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>#</th><th>Symbol</th><th>Venue</th><th>Side</th>
-        <th class="num">Rungs placed</th><th>Status</th><th>Why it stopped</th><th>Updated</th></tr></thead>
-      <tbody id="plans"></tbody>
-    </table></div>
-  </section>
-
-  <section class="wide">
-    <h2>Lessons — what the Reflector concluded</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Symbol</th><th>From</th><th>Verdict</th><th class="num">Alpha</th>
-        <th>Category</th><th>Lesson</th></tr></thead>
-      <tbody id="lessons"></tbody>
-    </table></div>
-  </section>
-
-  <section>
-    <h2>Notifications</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Kind</th><th>Subject</th><th>Status</th><th>When</th></tr></thead>
-      <tbody id="notifications"></tbody>
-    </table></div>
-  </section>
-
   <section>
     <h2>Reconciliation — ledger vs venue</h2>
     <div class="scroll"><table>
@@ -203,12 +253,23 @@
       <tbody id="recons"></tbody>
     </table></div>
   </section>
-
+    </div>
+  </section>
+  <section class="page" id="page-money">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Money</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">Programmatic credit, and where it went.</p>
+    <div class="grid">
   <section>
-    <h2>Signal bus</h2>
+    <h2>Budget — programmatic credit</h2>
+    <div class="kv">
+      <div><span>Spent</span><b id="bspent">$0</b></div>
+      <div><span>Cap</span><b id="bcap">$0</b></div>
+      <div><span>Tier</span><b id="btier">—</b></div>
+    </div>
+    <div class="gauge" id="bgauge"><i style="width:0%"></i></div>
     <div class="scroll"><table>
-      <thead><tr><th>#</th><th>Type</th><th>Symbol</th><th>From</th><th>Consumed by</th></tr></thead>
-      <tbody id="signals"></tbody>
+      <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Avg ms</th></tr></thead>
+      <tbody id="costs"></tbody>
     </table></div>
   </section>
 
@@ -220,6 +281,19 @@
       <tbody id="llm"></tbody>
     </table></div>
   </section>
+    </div>
+  </section>
+  <section class="page" id="page-agents">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Agents</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">The message bus between agents, and what each one has been doing.</p>
+    <div class="grid">
+  <section>
+    <h2>Signal bus</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>#</th><th>Type</th><th>Symbol</th><th>From</th><th>Consumed by</th></tr></thead>
+      <tbody id="signals"></tbody>
+    </table></div>
+  </section>
 
   <section class="wide">
     <h2>Agent activity</h2>
@@ -229,12 +303,28 @@
     </table></div>
   </section>
 
+  <section>
+    <h2>Notifications</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Kind</th><th>Subject</th><th>Status</th><th>When</th></tr></thead>
+      <tbody id="notifications"></tbody>
+    </table></div>
+  </section>
+    </div>
+  </section>
+  <section class="page" id="page-market">
+    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Market</h2>
+    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">External charts. These are TradingView’s data, not ours.</p>
+    <div class="grid">
   <section class="wide">
     <h2>Market — TradingView</h2>
     <div class="tv"><div class="tradingview-widget-container" style="height:100%">
       <div id="tvchart" style="height:100%"></div>
     </div></div>
   </section>
+    </div>
+  </section>
+</main>
 </div>
 
 <footer>
@@ -347,7 +437,61 @@ function initTheme() {
 }
 initTheme();
 
+/**
+ * Page routing.
+ *
+ * The hash, so a reload keeps you where you were and a page can be linked to.
+ * Everything is rendered on every tick regardless of which page is visible —
+ * the payload arrives whole and hiding a section costs nothing, whereas
+ * re-fetching per page would multiply the polling.
+ */
+const PAGES = ['overview', 'decisions', 'research', 'execution', 'money', 'agents', 'market'];
+function showPage(id) {
+  const page = PAGES.includes(id) ? id : 'overview';
+  for (const el of document.querySelectorAll('.page')) el.classList.toggle('on', el.id === 'page-' + page);
+  for (const a of document.querySelectorAll('nav.side a')) a.classList.toggle('on', a.dataset.page === page);
+  if (location.hash.slice(1) !== page) history.replaceState(null, '', '#' + page);
+}
+document.getElementById('nav').addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-page]');
+  if (a) { e.preventDefault(); showPage(a.dataset.page); }
+});
+window.addEventListener('hashchange', () => showPage(location.hash.slice(1)));
+showPage(location.hash.slice(1));
+
+/** Money, in the six numbers an operator actually looks for. */
+function renderBalances(s) {
+  const b = s.balances || {};
+  const money = (v) => (v == null ? '—' : '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 }));
+
+  $('c-equity').textContent = money(b.equity);
+  $('c-cash').textContent = money(b.cash);
+  $('c-invested').textContent = money(b.invested);
+  $('c-invested-sub').textContent =
+    b.deployedPct == null ? 'at cost' : `${b.deployedPct.toFixed(1)}% of equity deployed`;
+
+  const r = Number(b.realised || 0);
+  const rEl = $('c-realised');
+  rEl.textContent = (r > 0 ? '+' : '') + money(Math.abs(r)).replace('$', r < 0 ? '-$' : '$');
+  rEl.className = r > 0 ? 'pos' : r < 0 ? 'neg' : '';
+
+  $('c-open').textContent = b.openPositions ?? 0;
+  $('c-open-sub').textContent =
+    `${money(b.longNotional)} long · ${money(b.shortNotional)} short`;
+
+  $('c-spend').textContent = cost(s.budget.spent);
+  $('c-spend-sub').textContent = `of $${s.budget.cap} · tier ${s.budget.tier}`;
+
+  const n = (id, v) => { const el = $(id); if (el) el.textContent = v ? String(v) : ''; };
+  n('n-decisions', (s.decisions || []).length);
+  n('n-orders', (s.orders || []).length);
+  n('n-news', (s.news || []).length);
+  n('n-signals', (s.signals || []).filter((x) => !x.consumed).length);
+  n('n-spend', cost(s.budget.spent));
+}
+
 function render(s) {
+  renderBalances(s);
   $('autonomy').textContent = s.autonomy;
   $('autonomy').className = 'tag ' + (s.autonomy === 'AUTO' ? 'auto' : 'shadow');
   const venues = s.venues && s.venues.length ? s.venues : [s.venue];
