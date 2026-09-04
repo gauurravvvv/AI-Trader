@@ -151,3 +151,86 @@ describe('Reconciler', () => {
     expect(db.prepare('SELECT COUNT(*) c FROM reconciliations').get()).toEqual({ c: 2 });
   });
 });
+
+describe('short positions', () => {
+  const at = new Date().toISOString();
+  let n = 0;
+
+  function apply(side: 'buy' | 'sell', qty: string, price: string): void {
+    n += 1;
+    const d = db.prepare(
+      `INSERT INTO decisions (symbol, market, venue, side, status) VALUES ('X','US','v',?, 'EXECUTED')`,
+    ).run(side);
+    const o = db.prepare(
+      `INSERT INTO orders (decision_id, rung_index, venue, client_order_id, symbol, side, type, qty, status)
+       VALUES (?,0,'v',?, 'X', ?, 'market', ?, 'filled')`,
+    ).run(d.lastInsertRowid, `c${String(n)}`, side, qty);
+    ledger.applyFill(
+      {
+        clientOrderId: `c${String(n)}`, venueOrderId: `v${String(n)}`, venueFillId: `f${String(n)}`,
+        symbol: 'X', side, qty, price, fee: '0', filledAt: at,
+      },
+      Number(o.lastInsertRowid),
+      'v',
+    );
+  }
+
+  it('opens a short as a negative position', () => {
+    apply('sell', '10', '100');
+    expect(ledger.get('v', 'X')!.qty).toBe('-10');
+  });
+
+  it('realises a gain when a short is covered lower', () => {
+    apply('sell', '10', '100');
+    apply('buy', '10', '90');
+    // Sold at 100, bought back at 90: +100.
+    expect(Number(ledger.get('v', 'X')!.realisedPnl)).toBeCloseTo(100, 6);
+  });
+
+  it('realises a loss when a short is covered higher', () => {
+    apply('sell', '10', '100');
+    apply('buy', '10', '112');
+    expect(Number(ledger.get('v', 'X')!.realisedPnl)).toBeCloseTo(-120, 6);
+  });
+
+  it('averages two shorts opened at different prices', () => {
+    apply('sell', '10', '100');
+    apply('sell', '10', '120');
+    const p = ledger.get('v', 'X')!;
+    expect(p.qty).toBe('-20');
+    expect(Number(p.avgCost)).toBeCloseTo(110, 6);
+  });
+
+  it('covers the cheapest-sold lot first, leaving the better half of the short', () => {
+    apply('sell', '10', '100');
+    apply('sell', '10', '140');
+    apply('buy', '10', '110');
+    // The lot sold at 100 is consumed: -100 realised, and the survivor
+    // averages 140 rather than 100.
+    const p = ledger.get('v', 'X')!;
+    expect(Number(p.realisedPnl)).toBeCloseTo(-100, 6);
+    expect(Number(p.avgCost)).toBeCloseTo(140, 6);
+  });
+
+  it('closes a short flat rather than leaving a residual', () => {
+    apply('sell', '10', '100');
+    apply('buy', '10', '95');
+    expect(ledger.get('v', 'X')!.qty).toBe('0');
+  });
+
+  it('re-bases when a trade crosses from long through flat into short', () => {
+    apply('buy', '10', '100');
+    apply('sell', '30', '120');
+    const p = ledger.get('v', 'X')!;
+    expect(p.qty).toBe('-20');
+    // The long realised +200; the residual short is at today's price, not 100.
+    expect(Number(p.realisedPnl)).toBeCloseTo(200, 6);
+    expect(Number(p.avgCost)).toBeCloseTo(120, 6);
+  });
+
+  it('counts a short as an open position', () => {
+    apply('sell', '10', '100');
+    expect(ledger.openCount('v')).toBe(1);
+    expect(ledger.open('v')).toHaveLength(1);
+  });
+});

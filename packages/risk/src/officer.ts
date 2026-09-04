@@ -82,6 +82,11 @@ export interface ProposedOrder {
   side: 'buy' | 'sell';
   qty: string;
   price: string;
+  /**
+   * Whether this adds exposure or removes it. Omitted means the old
+   * long-only reading: buy opens, sell closes.
+   */
+  intent?: 'open' | 'close';
 }
 
 export interface RiskCheck {
@@ -120,7 +125,9 @@ export function evaluate(
     if (!passed) reject.push(code);
   };
 
-  const isExit = order.side === 'sell';
+  // Intent, not side. A short entry is a sell that ADDS risk, and reading it as
+  // an exit would skip every sizing gate on the way in.
+  const isExit = (order.intent ?? (order.side === 'sell' ? 'close' : 'open')) === 'close';
   const qty = new Decimal(order.qty);
   const price = new Decimal(order.price);
   const notional = qty.times(price);
@@ -224,6 +231,9 @@ export function evaluate(
     'MAX_POSITIONS',
   );
 
+  // A short does not consume cash to open — it raises it — but it still needs
+  // margin, and treating it as free is how a simulator invents leverage. The
+  // notional is checked against cash either way.
   add(
     'cash',
     new Decimal(ctx.cash).gte(notional),

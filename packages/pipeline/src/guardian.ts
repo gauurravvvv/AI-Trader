@@ -50,24 +50,36 @@ export interface ExitDecision {
 export function evaluateExit(
   entryPrice: string,
   currentPrice: string,
-  highWaterMark: string,
+  /** Best price reached: the high for a long, the low for a short. */
+  waterMark: string,
   heldDays: number,
   rule: ExitRule = DRIFT_EXIT,
+  direction: 'long' | 'short' = 'long',
 ): ExitDecision {
   const entry = new Decimal(entryPrice);
   const now = new Decimal(currentPrice);
-  const high = Decimal.max(new Decimal(highWaterMark), now);
   if (entry.lte(0)) return { exit: false, reason: null, detail: 'no entry price' };
 
-  const move = now.minus(entry).div(entry);
-  const fromHigh = high.gt(0) ? high.minus(now).div(high) : new Decimal(0);
-  const peak = high.minus(entry).div(entry);
+  // Everything below is expressed as move IN OUR FAVOUR, so one set of rules
+  // serves both directions. For a short the stop is above the entry and the
+  // water mark is the low — inverting the sign here is what keeps the rest of
+  // this function from needing a second copy.
+  const sign = direction === 'long' ? 1 : -1;
+  const best = direction === 'long'
+    ? Decimal.max(new Decimal(waterMark), now)
+    : Decimal.min(new Decimal(waterMark), now);
+
+  const move = now.minus(entry).div(entry).times(sign);
+  const fromBest = best.gt(0) ? now.minus(best).div(best).times(-sign) : new Decimal(0);
+  const peak = best.minus(entry).div(entry).times(sign);
+  const fromHigh = fromBest;
+  const high = best;
 
   if (move.lte(-rule.stopLossPct)) {
     return {
       exit: true,
       reason: 'STOP_LOSS',
-      detail: `${move.times(100).toFixed(2)}% vs stop -${String(rule.stopLossPct * 100)}%`,
+      detail: `${move.times(100).toFixed(2)}% against us vs stop -${String(rule.stopLossPct * 100)}%`,
     };
   }
 
@@ -105,10 +117,12 @@ export function evaluateExit(
 }
 
 /** Signed percentage move from entry, formatted for a subject line. */
-export function pnlPct(entry: string, exit: string): string {
+export function pnlPct(entry: string, exit: string, direction: 'long' | 'short' = 'long'): string {
   const e = new Decimal(entry);
   if (e.lte(0)) return 'n/a';
-  const pct = new Decimal(exit).minus(e).div(e).times(100);
+  // Signed by direction: a short that fell is a gain, and reporting it as a
+  // loss would make every winning short look like a losing one.
+  const pct = new Decimal(exit).minus(e).div(e).times(100).times(direction === 'long' ? 1 : -1);
   return `${pct.gte(0) ? '+' : ''}${pct.toFixed(2)}%`;
 }
 
@@ -152,7 +166,8 @@ interface EntryRow {
  * positions; it must never stop us closing one.
  */
 export class PositionGuardianAgent extends BaseAgent {
-  private readonly highWater = new Map<string, string>();
+  /** Best price reached per symbol: the high for a long, the low for a short. */
+  private readonly waterMark = new Map<string, string>();
 
   constructor(
     private readonly p: PipelineDeps & { ledger: Ledger; prices: YahooPriceSource; router: OrderRouter },
@@ -172,7 +187,7 @@ export class PositionGuardianAgent extends BaseAgent {
     const rows = this.db
       .prepare(
         `SELECT symbol, qty, avg_cost, opened_at FROM positions
-         WHERE venue = ? AND CAST(qty AS REAL) > 0`,
+         WHERE venue = ? AND CAST(qty AS REAL) != 0`,
       )
       .all(this.p.router.venue) as PosRow[];
 
@@ -183,9 +198,13 @@ export class PositionGuardianAgent extends BaseAgent {
         continue;
       }
 
-      const prevHigh = this.highWater.get(pos.symbol) ?? pos.avg_cost;
-      const high = Decimal.max(new Decimal(prevHigh), new Decimal(quote.last)).toString();
-      this.highWater.set(pos.symbol, high);
+      const isShort = new Decimal(pos.qty).isNegative();
+      const prev = this.waterMark.get(pos.symbol) ?? pos.avg_cost;
+      const mark = (isShort
+        ? Decimal.min(new Decimal(prev), new Decimal(quote.last))
+        : Decimal.max(new Decimal(prev), new Decimal(quote.last))
+      ).toString();
+      this.waterMark.set(pos.symbol, mark);
 
       const heldDays =
         pos.opened_at === null
@@ -202,7 +221,9 @@ export class PositionGuardianAgent extends BaseAgent {
         continue;
       }
 
-      const d = evaluateExit(pos.avg_cost, quote.last, high, heldDays, this.rule);
+      const d = evaluateExit(
+        pos.avg_cost, quote.last, mark, heldDays, this.rule, isShort ? 'short' : 'long',
+      );
       if (!d.exit) {
         this.log.event(this.name, `${pos.symbol}  hold  ${d.detail}`);
         continue;
@@ -257,25 +278,31 @@ export class PositionGuardianAgent extends BaseAgent {
     reason: ExitReason,
     detail = '',
   ): Promise<void> {
+    // Closing a short is a buy. Hard-coding 'sell' here would have tried to
+    // sell more of a position we were already short.
+    const isShort = new Decimal(pos.qty).isNegative();
+    const side = isShort ? 'buy' : 'sell';
+    const qty = new Decimal(pos.qty).abs().toString();
+
     const ins = this.db
       .prepare(
         `INSERT INTO decisions (symbol, market, venue, side, rationale, status)
-         VALUES (?,?,?, 'sell', ?, 'APPROVED')`,
+         VALUES (?,?,?,?,?, 'APPROVED')`,
       )
-      .run(pos.symbol, 'US', this.p.router.venue, `exit: ${reason}`);
+      .run(pos.symbol, 'US', this.p.router.venue, side, `exit: ${reason}`);
     const decisionId = Number(ins.lastInsertRowid);
 
     const res = await this.p.router.route(
-      { decisionId, symbol: pos.symbol, side: 'sell', qty: pos.qty, price },
+      { decisionId, symbol: pos.symbol, side, qty, price, intent: 'close' },
       // Liquidity is not a gate on an exit; the Risk Officer permits sells.
       '999999999',
     );
     if (res.ok) {
-      this.log.ok('order-router', `${pos.symbol} SELL ${pos.qty} — ${reason}`);
-      this.highWater.delete(pos.symbol);
+      this.log.ok('order-router', `${pos.symbol} ${side.toUpperCase()} ${qty} — ${reason}`);
+      this.waterMark.delete(pos.symbol);
       this.p.notify?.({
         kind: 'POSITION_EXITED',
-        subject: `Aegis: exited ${pos.symbol} — ${reason} (${pnlPct(pos.avg_cost, price)})`,
+        subject: `Aegis: exited ${pos.symbol} — ${reason} (${pnlPct(pos.avg_cost, price, isShort ? 'short' : 'long')})`,
         body: exitBody(pos, price, reason, detail),
       });
     } else {

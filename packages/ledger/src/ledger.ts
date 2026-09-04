@@ -71,48 +71,78 @@ export class Ledger {
         pos = this.db.prepare('SELECT * FROM positions WHERE id = ?').get(r.lastInsertRowid) as PosRow;
       }
 
-      if (fill.side === 'buy') {
+      // Signed throughout. A lot's remaining_qty is positive for a long and
+      // negative for a short, and every rule below is the same in both
+      // directions — which is the only way to avoid a second, subtly different
+      // copy of this logic for shorts.
+      const signed = fill.side === 'buy' ? new Decimal(fill.qty) : new Decimal(fill.qty).negated();
+      const held = new Decimal(pos.qty);
+      const extending = held.isZero() || held.s === signed.s;
+
+      if (extending) {
         this.db
           .prepare(
             `INSERT INTO lots (position_id, fill_id, original_qty, remaining_qty, cost_basis, acquired_at)
              VALUES (?,?,?,?,?,?)`,
           )
-          .run(pos.id, fillId, fill.qty, fill.qty, fill.price, fill.filledAt);
+          .run(pos.id, fillId, signed.toString(), signed.toString(), fill.price, fill.filledAt);
 
-        const newQty = new Decimal(pos.qty).plus(fill.qty);
-        const newAvg = new Decimal(pos.qty)
-          .times(pos.avg_cost)
-          .plus(new Decimal(fill.qty).times(fill.price))
-          .div(newQty);
+        const newQty = held.plus(signed);
+        const newAvg = newQty.isZero()
+          ? new Decimal(0)
+          : held.times(pos.avg_cost).plus(signed.times(fill.price)).div(newQty);
         this.db
           .prepare('UPDATE positions SET qty = ?, avg_cost = ?, closed_at = NULL WHERE id = ?')
           .run(newQty.toString(), newAvg.toFixed(10), pos.id);
         return;
       }
 
-      // SELL — highest-cost lot first.
-      let remaining = new Decimal(fill.qty);
+      // Reducing. Consume lots worst-first in whichever direction we are:
+      // trimming a long sheds its highest-cost shares, covering a short sheds
+      // the ones sold cheapest. Both leave the better half of the position.
+      let remaining = signed.abs();
       let realised = new Decimal(pos.realised_pnl);
       const lots = this.db
-        .prepare('SELECT * FROM lots WHERE position_id = ? ORDER BY CAST(cost_basis AS REAL) DESC')
+        .prepare(
+          `SELECT * FROM lots WHERE position_id = ?
+            ORDER BY CAST(cost_basis AS REAL) ${held.isPositive() ? 'DESC' : 'ASC'}`,
+        )
         .all(pos.id) as LotRow[];
 
       for (const lot of lots) {
         if (remaining.lte(0)) break;
         const avail = new Decimal(lot.remaining_qty);
-        if (avail.lte(0)) continue;
-        const take = Decimal.min(avail, remaining);
-        realised = realised.plus(take.times(new Decimal(fill.price).minus(lot.cost_basis)));
+        if (avail.isZero()) continue;
+        // Only lots on the side we are reducing.
+        if (avail.s !== held.s) continue;
+        const take = Decimal.min(avail.abs(), remaining);
+        // sign(lot) makes this correct for both: a long realises price - cost,
+        // a short realises cost - price.
+        realised = realised.plus(
+          take.times(new Decimal(fill.price).minus(lot.cost_basis)).times(avail.s),
+        );
         this.db
           .prepare('UPDATE lots SET remaining_qty = ? WHERE id = ?')
-          .run(avail.minus(take).toString(), lot.id);
+          .run(avail.minus(take.times(avail.s)).toString(), lot.id);
         remaining = remaining.minus(take);
       }
 
-      const newQty = new Decimal(pos.qty).minus(fill.qty);
+      const newQty = held.plus(signed);
+
+      // Crossed through flat: whatever is left is a new position in the other
+      // direction, opened at this price, not a remnant of the old one.
+      if (remaining.gt(0) && !newQty.isZero()) {
+        this.db
+          .prepare(
+            `INSERT INTO lots (position_id, fill_id, original_qty, remaining_qty, cost_basis, acquired_at)
+             VALUES (?,?,?,?,?,?)`,
+          )
+          .run(pos.id, fillId, newQty.toString(), newQty.toString(), fill.price, fill.filledAt);
+      }
+
       const survivors = (
         this.db.prepare('SELECT * FROM lots WHERE position_id = ?').all(pos.id) as LotRow[]
-      ).filter((l) => new Decimal(l.remaining_qty).gt(0));
+      ).filter((l) => !new Decimal(l.remaining_qty).isZero());
 
       const totalQty = survivors.reduce((a, l) => a.plus(l.remaining_qty), new Decimal(0));
       const newAvg = totalQty.isZero()
@@ -165,14 +195,16 @@ export class Ledger {
 
   open(venue: string): VenuePosition[] {
     const rows = this.db
-      .prepare('SELECT * FROM positions WHERE venue = ? AND CAST(qty AS REAL) > 0')
+      .prepare(// != 0, not > 0: a short is an open position and hiding it here would
+      // make the reconciler report a phantom break on every one.
+      'SELECT * FROM positions WHERE venue = ? AND CAST(qty AS REAL) != 0')
       .all(venue) as PosRow[];
     return rows.map((p) => ({ symbol: p.symbol, qty: p.qty, avgCost: p.avg_cost }));
   }
 
   openCount(venue: string): number {
     const r = this.db
-      .prepare('SELECT COUNT(*) c FROM positions WHERE venue = ? AND CAST(qty AS REAL) > 0')
+      .prepare('SELECT COUNT(*) c FROM positions WHERE venue = ? AND CAST(qty AS REAL) != 0')
       .get(venue) as { c: number };
     return r.c;
   }

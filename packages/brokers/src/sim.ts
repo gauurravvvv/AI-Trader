@@ -128,10 +128,13 @@ export class SimAdapter implements BrokerAdapter {
   }
 
   async getAccount(): Promise<Account> {
+    // Signed quantity times mark works for both directions: a short contributes
+    // negatively, so a rising price correctly reduces equity.
     let equity = this.cash;
     for (const [symbol, p] of this.positions) {
+      if (p.qty.isZero()) continue;
       const q = await this.prices.quote(symbol);
-      const mark = q ? new Decimal(q.last) : p.cost;
+      const mark = q ? new Decimal(q.last) : (p.qty.isZero() ? new Decimal(0) : p.cost.div(p.qty));
       equity = equity.plus(p.qty.times(mark));
     }
     return {
@@ -142,8 +145,10 @@ export class SimAdapter implements BrokerAdapter {
   }
 
   async getPositions(): Promise<VenuePosition[]> {
+    // A short is a position. Filtering on `> 0` hid them entirely, which meant
+    // reconciliation would have reported a phantom break on every short.
     return [...this.positions.entries()]
-      .filter(([, p]) => p.qty.gt(0))
+      .filter(([, p]) => !p.qty.isZero())
       .map(([symbol, p]) => ({
         symbol,
         qty: p.qty.toString(),
@@ -199,6 +204,23 @@ export class SimAdapter implements BrokerAdapter {
     }
 
     const qty = new Decimal(req.qty);
+    const held = this.positions.get(req.symbol)?.qty ?? new Decimal(0);
+    if (!this.constraints.supportsShort && req.side === 'sell' && qty.gt(held)) {
+      const rejected: VenueOrder = {
+        venueOrderId: randomUUID(),
+        clientOrderId: req.clientOrderId,
+        symbol: req.symbol,
+        side: req.side,
+        type: req.type,
+        qty: req.qty,
+        filledQty: '0',
+        avgFillPrice: null,
+        status: 'rejected',
+        submittedAt: new Date().toISOString(),
+      };
+      this.orders.set(req.clientOrderId, rejected);
+      return rejected;
+    }
     // Each slice is priced on the cumulative quantity worked so far, so later
     // slices pay for the impact the earlier ones already caused.
     const slices = sliceOrder(qty, new Decimal(q.volume));
@@ -249,18 +271,34 @@ export class SimAdapter implements BrokerAdapter {
     };
     this.orders.set(req.clientOrderId, order);
 
+    // Signed quantity: negative is short. Cost is tracked as a signed total so
+    // the average works out for either direction — a short's "cost" is what it
+    // was sold for, and covering below that is the profit.
     const cur = this.positions.get(req.symbol) ?? { qty: new Decimal(0), cost: new Decimal(0) };
-    if (req.side === 'buy') {
-      this.positions.set(req.symbol, { qty: cur.qty.plus(qty), cost: cur.cost.plus(notional) });
-      this.cash = this.cash.minus(notional).minus(fee);
+    const signed = req.side === 'buy' ? qty : qty.negated();
+    const avg = cur.qty.isZero() ? new Decimal(0) : cur.cost.div(cur.qty);
+    const crossesZero = !cur.qty.isZero() && cur.qty.s !== signed.s && signed.abs().gt(cur.qty.abs());
+
+    let nextQty = cur.qty.plus(signed);
+    let nextCost: Decimal;
+    if (cur.qty.isZero() || cur.qty.s === signed.s) {
+      // Opening or adding in the same direction.
+      nextCost = cur.cost.plus(signed.times(price));
+    } else if (crossesZero) {
+      // Reduced past flat and opened the other way: the residual is a new
+      // position at this price, not the remains of the old one.
+      nextCost = nextQty.times(price);
     } else {
-      const avg = cur.qty.gt(0) ? cur.cost.div(cur.qty) : new Decimal(0);
-      this.positions.set(req.symbol, {
-        qty: cur.qty.minus(qty),
-        cost: Decimal.max(0, cur.cost.minus(qty.times(avg))),
-      });
-      this.cash = this.cash.plus(notional).minus(fee);
+      // Reducing: keep the original average on what is left.
+      nextCost = nextQty.times(avg);
     }
+    if (nextQty.isZero()) nextCost = new Decimal(0);
+
+    this.positions.set(req.symbol, { qty: nextQty, cost: nextCost });
+    // Buying spends cash, selling raises it, in both directions.
+    this.cash = req.side === 'buy'
+      ? this.cash.minus(notional).minus(fee)
+      : this.cash.plus(notional).minus(fee);
 
     // One event per slice. The fee is apportioned by value so the parts sum to
     // the whole, and each slice lands later than the last — a worked order takes

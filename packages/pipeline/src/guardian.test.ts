@@ -314,3 +314,53 @@ describe('PositionGuardianAgent', () => {
     expect(d.budget.spent()).toBe('99.000000');
   });
 });
+
+describe('short positions', () => {
+  const SHORT = DRIFT_EXIT;
+
+  it('stops out a short when price rises against it', () => {
+    // Short at 100. A rise to 109 is -9% for us, past the -8% stop.
+    const d = evaluateExit('100', '109', '100', 1, SHORT, 'short');
+    expect(d.exit).toBe(true);
+    expect(d.reason).toBe('STOP_LOSS');
+  });
+
+  it('does not stop a short when price falls', () => {
+    expect(evaluateExit('100', '90', '90', 1, SHORT, 'short').reason).not.toBe('STOP_LOSS');
+  });
+
+  it('takes profit on a short when price falls far enough', () => {
+    // Short at 100, now 84: +16% for us, past the +15% target.
+    const d = evaluateExit('100', '84', '84', 1, SHORT, 'short');
+    expect(d.exit).toBe(true);
+    expect(d.reason).toBe('TAKE_PROFIT');
+  });
+
+  it('trails a short from its low, not its high', () => {
+    // Ran to 92 (+8%, arms the trail), now back to 97.5: 6% off the low.
+    const d = evaluateExit('100', '97.5', '92', 1, SHORT, 'short');
+    expect(d.exit).toBe(true);
+    expect(d.reason).toBe('TRAILING_STOP');
+  });
+
+  it('does not arm a short trail before it has run', () => {
+    const d = evaluateExit('100', '99', '98', 1, SHORT, 'short');
+    expect(d.exit).toBe(false);
+  });
+
+  it('reads the identical prices oppositely for a long', () => {
+    // 109 is a gain for a long and a stop-out for a short.
+    expect(evaluateExit('100', '109', '109', 1, SHORT, 'long').reason).not.toBe('STOP_LOSS');
+    expect(evaluateExit('100', '109', '100', 1, SHORT, 'short').reason).toBe('STOP_LOSS');
+  });
+
+  it('signs the reported move by direction', () => {
+    // A short that fell made money; reporting -9% would invert every winner.
+    expect(pnlPct('100', '91', 'short')).toBe('+9.00%');
+    expect(pnlPct('100', '91', 'long')).toBe('-9.00%');
+  });
+
+  it('still time-stops a short', () => {
+    expect(evaluateExit('100', '100', '100', 60, SHORT, 'short').reason).toBe('TIME_STOP');
+  });
+});

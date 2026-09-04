@@ -57,7 +57,7 @@ export function collectSummary(db: Db, venue: string, day: string): DaySummary {
   );
 
   const open = one<{ n: number }>(
-    `SELECT COUNT(*) n FROM positions WHERE venue = ? AND CAST(qty AS REAL) > 0`,
+    `SELECT COUNT(*) n FROM positions WHERE venue = ? AND CAST(qty AS REAL) != 0`,
     venue,
   );
 

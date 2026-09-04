@@ -12,6 +12,8 @@ export interface RouteRequest {
   side: 'buy' | 'sell';
   qty: string;
   price: string;
+  /** Whether this opens exposure or closes it. Defaults to the long-only reading. */
+  intent?: 'open' | 'close';
   /** When true, an oversized order is shrunk to the largest permitted size
    *  instead of being rejected outright. */
   allowResize?: boolean;
@@ -214,7 +216,8 @@ export class OrderRouter {
 
     let qty = req.qty;
     let resized = false;
-    let evaluation = evaluate({ ...req, qty }, ctx, this.limits);
+    const intent = req.intent ?? (req.side === 'sell' ? 'close' : 'open');
+    let evaluation = evaluate({ ...req, qty, intent }, ctx, this.limits);
 
     // Resize only when the sole problem is size. A halt, a blocklist or a
     // closed market is never solved by trading less.
@@ -226,7 +229,7 @@ export class OrderRouter {
       if (new Decimal(permitted).gt(0)) {
         qty = permitted;
         resized = true;
-        evaluation = evaluate({ ...req, qty }, ctx, this.limits);
+        evaluation = evaluate({ ...req, qty, intent }, ctx, this.limits);
       }
     }
 
@@ -285,6 +288,7 @@ export class OrderRouter {
       side: req.side,
       type: 'market',
       qty,
+      intent,
     });
 
     this.db

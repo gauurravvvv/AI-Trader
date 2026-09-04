@@ -89,7 +89,7 @@ export class Dashboard {
       },
       positions: q(
         `SELECT venue, symbol, qty, avg_cost, realised_pnl, opened_at
-         FROM positions WHERE CAST(qty AS REAL) > 0 ORDER BY symbol`,
+         FROM positions WHERE CAST(qty AS REAL) != 0 ORDER BY symbol`,
       ),
       decisions: q(
         // Sources are folded in rather than fetched per row: the reason a trade

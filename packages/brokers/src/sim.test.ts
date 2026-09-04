@@ -45,6 +45,9 @@ describe('SimAdapter fill model', () => {
 
   it('never fills a sell better than the mid', async () => {
     const a = usSim();
+    // Buy first: on a long-only venue a bare sell is now a short and is
+    // refused, which is the point of the constraint.
+    await a.submitOrder({ clientOrderId: 'a:0', symbol: 'X', side: 'buy', type: 'market', qty: '10' });
     const o = await a.submitOrder({
       clientOrderId: 'b:0', symbol: 'X', side: 'sell', type: 'market', qty: '10',
     });
@@ -253,5 +256,101 @@ describe('partial fills', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(o.filledQty).toBe('5000');
     expect(Number(o.avgFillPrice)).toBeGreaterThan(100);
+  });
+});
+
+describe('short selling', () => {
+  const src: PriceSource = {
+    quote: async (symbol: string) => ({
+      symbol, last: '100', bid: '99.95', ask: '100.05',
+      volume: '100000000', at: new Date().toISOString(),
+    }),
+  };
+
+  function shortable(): SimAdapter {
+    return new SimAdapter('sim-us', 'US', src, US_COSTS, '1000000', {
+      tickSize: '0.01', lotSize: '1', minNotional: '1',
+      supportsFractional: false, supportsShort: true,
+    }, { isOpen: () => true });
+  }
+
+  function longOnly(): SimAdapter {
+    return new SimAdapter('sim-us', 'US', src, US_COSTS, '1000000', {
+      tickSize: '0.01', lotSize: '1', minNotional: '1',
+      supportsFractional: false, supportsShort: false,
+    }, { isOpen: () => true });
+  }
+
+  it('refuses a naked sell on a long-only venue', async () => {
+    const o = await longOnly().submitOrder({
+      clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '10',
+    });
+    expect(o.status).toBe('rejected');
+  });
+
+  it('opens a short as a negative position', async () => {
+    const a = shortable();
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '10' });
+    const p = (await a.getPositions()).find((x) => x.symbol === 'X')!;
+    expect(Number(p.qty)).toBe(-10);
+  });
+
+  it('reports a short in getPositions — filtering to qty>0 hid them entirely', async () => {
+    // A hidden short would have made reconciliation report a phantom break on
+    // every one of them.
+    const a = shortable();
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '10' });
+    expect(await a.getPositions()).toHaveLength(1);
+  });
+
+  it('raises cash when a short is opened and spends it to cover', async () => {
+    const a = shortable();
+    const before = Number((await a.getAccount()).cash);
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '10' });
+    const afterShort = Number((await a.getAccount()).cash);
+    expect(afterShort).toBeGreaterThan(before);
+    await a.submitOrder({ clientOrderId: 'c2', symbol: 'X', side: 'buy', type: 'market', qty: '10' });
+    expect(Number((await a.getAccount()).cash)).toBeLessThan(afterShort);
+  });
+
+  it('marks a short against the current price, so a rise reduces equity', async () => {
+    const rising = { last: '100' };
+    const moving: PriceSource = {
+      quote: async (symbol: string) => ({
+        symbol, last: rising.last,
+        bid: String(Number(rising.last) - 0.05), ask: String(Number(rising.last) + 0.05),
+        volume: '100000000', at: new Date().toISOString(),
+      }),
+    };
+    const a = new SimAdapter('sim-us', 'US', moving, US_COSTS, '1000000', {
+      tickSize: '0.01', lotSize: '1', minNotional: '1',
+      supportsFractional: false, supportsShort: true,
+    }, { isOpen: () => true });
+
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '100' });
+    const flat = Number((await a.getAccount()).equity);
+    rising.last = '110';
+    expect(Number((await a.getAccount()).equity)).toBeLessThan(flat);
+    rising.last = '90';
+    expect(Number((await a.getAccount()).equity)).toBeGreaterThan(flat);
+  });
+
+  it('flattens to zero, not to a residual', async () => {
+    const a = shortable();
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'sell', type: 'market', qty: '10' });
+    await a.submitOrder({ clientOrderId: 'c2', symbol: 'X', side: 'buy', type: 'market', qty: '10' });
+    expect(await a.getPositions()).toHaveLength(0);
+  });
+
+  it('re-bases the cost when a trade crosses through flat', async () => {
+    // Long 10, then sell 30: the residual is a NEW short of 20 at today's
+    // price, not the remains of the old long.
+    const a = shortable();
+    await a.submitOrder({ clientOrderId: 'c1', symbol: 'X', side: 'buy', type: 'market', qty: '10' });
+    await a.submitOrder({ clientOrderId: 'c2', symbol: 'X', side: 'sell', type: 'market', qty: '30' });
+    const p = (await a.getPositions()).find((x) => x.symbol === 'X')!;
+    expect(Number(p.qty)).toBe(-20);
+    expect(Number(p.avgCost)).toBeGreaterThan(99);
+    expect(Number(p.avgCost)).toBeLessThan(101);
   });
 });

@@ -2,9 +2,20 @@ import type { VenueId, MarketId } from '@aegis/config';
 
 export type Side = 'buy' | 'sell';
 export type OrderType = 'market' | 'limit';
+
+/**
+ * Whether an order adds risk or removes it.
+ *
+ * Side alone cannot say. Once shorting exists a sell is an entry as often as
+ * an exit, and every gate that read `side === 'sell'` as "this is an exit" was
+ * about to start waving short entries straight through the sizing checks.
+ */
+export type OrderIntent = 'open' | 'close';
 export type OrderStatus = 'pending' | 'submitted' | 'partial' | 'filled' | 'cancelled' | 'rejected';
 
 export interface OrderRequest {
+  /** Defaults to 'open' for a buy and 'close' for a sell — the pre-short behaviour. */
+  intent?: OrderIntent;
   /** Idempotency key: `${decisionId}:${rungIndex}`. Resubmitting must be a no-op. */
   clientOrderId: string;
   symbol: string;
