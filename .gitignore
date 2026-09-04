@@ -42,3 +42,4 @@ data/
 dist/
 .soak/
 .playwright-mcp/
+apps/*/data/

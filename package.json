@@ -10,10 +10,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "dev": "node --env-file-if-exists=.env --import tsx apps/daemon/src/main.ts",
-    "smoke:news": "pnpm --filter @aegis/daemon smoke:news",
-    "report": "pnpm --filter @aegis/daemon report",
-    "smoke:cost": "pnpm --filter @aegis/daemon smoke:cost",
-    "soak": "scripts/soak.sh"
+    "smoke:news": "node --env-file-if-exists=.env --import tsx apps/daemon/src/smoke-news.ts",
+    "report": "node --env-file-if-exists=.env --import tsx apps/daemon/src/report.ts",
+    "smoke:cost": "node --env-file-if-exists=.env --import tsx apps/daemon/src/smoke-cost.ts",
+    "soak": "scripts/soak.sh",
+    "smoke:debate": "node --env-file-if-exists=.env --import tsx apps/daemon/src/smoke-debate.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

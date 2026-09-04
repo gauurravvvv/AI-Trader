@@ -4,3 +4,5 @@ export { YahooConsensus, standardisedSue } from './consensus.js';
 export type { ConsensusSnapshot, QuarterSurprise } from './consensus.js';
 export { YahooNewsSource, isAbout, newestFirst, withinHours } from './news.js';
 export type { NewsItem } from './news.js';
+export { fetchArticle, extractArticle, htmlToText, trimArticle } from './article.js';
+export type { Article } from './article.js';

@@ -11,6 +11,7 @@ import {
   proposeThesis, challengeThesis, resolveDebate,
   DEFAULT_DEBATE, type DebateRule, type Evidence, type ThesisDeps,
 } from './thesis.js';
+import { fetchArticle } from '@aegis/marketdata';
 import { recordProvenance } from './provenance.js';
 import { newsConditions } from './watch.js';
 
@@ -22,7 +23,7 @@ export interface Candidate {
   score: number;
   /** Signed: positive is bullish news, negative bearish. */
   lean: number;
-  headlines: { title: string; publisher: string; publishedAt: string }[];
+  headlines: { title: string; publisher: string; publishedAt: string; link: string }[];
   signalIds: number[];
 }
 
@@ -61,6 +62,7 @@ export function screen(
       title,
       publisher: String(s.data['publisher'] ?? 'unknown'),
       publishedAt: String(s.data['publishedAt'] ?? ''),
+      link: String(s.data['link'] ?? ''),
     });
     entry.signalIds.push(s.id);
     entry.score = Math.max(entry.score, score);
@@ -83,6 +85,8 @@ export interface SentinelDeps extends PipelineDeps {
   baseSizePct?: number;
   debateRule?: DebateRule;
   minCandidateScore?: number;
+  /** Characters of article text per story handed to the analyst. */
+  articleChars?: number;
   analystModel?: ModelId;
   challengerModel?: ModelId;
 }
@@ -160,9 +164,16 @@ export class SentinelAgent extends BaseAgent {
     const last = Number(quote.last);
 
     const regime: Regime = currentRegime(this.bus.latest([SIG_REGIME], 1));
+
+    // Fetch the stories themselves. This is the difference between "Tesla Under
+    // Federal Probe" and three paragraphs naming the agency, the vehicles and
+    // the remedy — the analyst declined thirteen consecutive times on headlines
+    // alone, correctly, because a headline cannot establish magnitude.
+    const withBodies = await this.withArticles(c.headlines.slice(0, 5));
+
     const evidence: Evidence = {
       symbol: c.symbol,
-      headlines: c.headlines.slice(0, 8),
+      headlines: withBodies,
       movePct: prevClose > 0 ? (last - prevClose) / prevClose : 0,
       move5dPct: fiveAgo > 0 ? (last - fiveAgo) / fiveAgo : 0,
       regime,
@@ -221,6 +232,40 @@ export class SentinelAgent extends BaseAgent {
 
   /** The two debate calls share this. Forwarding `ask` is what makes the whole
    *  flow testable without a subprocess or a cent of credit. */
+  /**
+   * Attach the body to each headline, where it can be read.
+   *
+   * Sequential, not parallel: five concurrent fetches at a publisher is how a
+   * scraper gets rate-limited, and this runs once every few minutes on a
+   * handful of URLs. A story that will not load degrades to headline-only
+   * rather than failing the tick.
+   */
+  private async withArticles(
+    heads: { title: string; publisher: string; publishedAt: string; link: string }[],
+  ): Promise<Evidence['headlines']> {
+    const out: Evidence['headlines'] = [];
+    let fetched = 0;
+    for (const h of heads) {
+      const base = { title: h.title, publisher: h.publisher, publishedAt: h.publishedAt };
+      if (h.link === '') {
+        out.push(base);
+        continue;
+      }
+      const a = await fetchArticle(h.link, { maxChars: this.cfg.articleChars ?? 3500 });
+      if (a === null) {
+        out.push(base);
+        continue;
+      }
+      fetched += 1;
+      out.push({ ...base, body: a.text });
+    }
+    this.log.event(
+      this.name,
+      `read ${String(fetched)}/${String(heads.length)} full stor${heads.length === 1 ? 'y' : 'ies'}`,
+    );
+    return out;
+  }
+
   private deps(): ThesisDeps {
     return {
       budget: this.budget,

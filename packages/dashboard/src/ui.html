@@ -395,7 +395,6 @@
   <a data-page="agents" title="Agents"><svg class="ico" viewBox="0 0 24 24"><use href="#i-agents"/></svg><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
 
   <div class="grp">Operations</div>
-  <a data-page="money" title="Money"><svg class="ico" viewBox="0 0 24 24"><use href="#i-money"/></svg><span class="label">Money</span><span class="cnt" id="n-spend"></span></a>
   <a data-page="market" title="Market"><svg class="ico" viewBox="0 0 24 24"><use href="#i-market"/></svg><span class="label">Market</span></a>
 
   <div class="fill"></div>
@@ -430,7 +429,6 @@
       <div class="card"><span>Invested</span><b id="c-invested">—</b><small id="c-invested-sub">at cost</small></div>
       <div class="card"><span>Realised P&amp;L</span><b id="c-realised">—</b><small id="c-realised-sub">closed trades</small></div>
       <div class="card"><span>Open positions</span><b id="c-open">—</b><small id="c-open-sub">long / short</small></div>
-      <div class="card"><span>Model spend</span><b id="c-spend">—</b><small id="c-spend-sub">this cycle</small></div>
     </div>
     <div class="grid">
   <section class="wide">
@@ -545,34 +543,6 @@
   </section>
     </div>
   </section>
-  <section class="page" id="page-money">
-    <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Money</h2>
-    <p class="muted" style="margin:0 0 1rem;font-size:.82rem">Programmatic credit, and where it went.</p>
-    <div class="grid">
-  <section>
-    <h2>Budget — programmatic credit</h2>
-    <div class="kv">
-      <div><span>Spent</span><b id="bspent">$0</b></div>
-      <div><span>Cap</span><b id="bcap">$0</b></div>
-      <div><span>Tier</span><b id="btier">—</b></div>
-    </div>
-    <div class="gauge" id="bgauge"><i style="width:0%"></i></div>
-    <div class="scroll"><table>
-      <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Avg ms</th></tr></thead>
-      <tbody id="costs"></tbody>
-    </table></div>
-  </section>
-
-  <section>
-    <h2>Model calls</h2>
-    <div class="scroll"><table>
-      <thead><tr><th>Agent</th><th>Model</th><th class="num">In</th><th class="num">Out</th>
-        <th class="num">Cost</th><th class="num">Sec</th></tr></thead>
-      <tbody id="llm"></tbody>
-    </table></div>
-  </section>
-    </div>
-  </section>
   <section class="page" id="page-agents">
     <h2 style="margin:.1rem 0 .15rem;font-size:1.05rem">Agents</h2>
     <p class="muted" style="margin:0 0 1rem;font-size:.82rem">The message bus between agents, and what each one has been doing.</p>
@@ -582,6 +552,15 @@
     <div class="scroll"><table>
       <thead><tr><th>#</th><th>Type</th><th>Symbol</th><th>From</th><th>Consumed by</th></tr></thead>
       <tbody id="signals"></tbody>
+    </table></div>
+  </section>
+
+<section>
+    <h2>Model calls — per agent</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Agent</th><th>Model</th><th class="num">In</th><th class="num">Out</th>
+        <th class="num">Sec</th></tr></thead>
+      <tbody id="llm"></tbody>
     </table></div>
   </section>
 
@@ -647,7 +626,6 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 2) => Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
-const cost = (n) => { const v = Number(n); return v === 0 ? '$0' : v < 0.001 ? '$' + v.toFixed(6) : v < 1 ? '$' + v.toFixed(4) : '$' + v.toFixed(2); };
 /**
  * Every timestamp on this page is shown in IST.
  *
@@ -832,7 +810,7 @@ function applyNav(collapsed) {
   });
 })();
 
-const PAGES = ['overview', 'decisions', 'research', 'execution', 'money', 'agents', 'market'];
+const PAGES = ['overview', 'decisions', 'research', 'execution', 'agents', 'market'];
 function showPage(id) {
   const page = PAGES.includes(id) ? id : 'overview';
   for (const el of document.querySelectorAll('.page')) el.classList.toggle('on', el.id === 'page-' + page);
@@ -866,20 +844,14 @@ function renderBalances(s) {
   $('c-open-sub').textContent =
     `${money(b.longNotional)} long · ${money(b.shortNotional)} short`;
 
-  $('c-spend').textContent = cost(s.budget.spent);
   // Spend is a yardstick, not a wallet: Claude Code shares the plan allowance
   // with ordinary chat, so this says what the agents cost, not what is left.
-  $('c-spend-sub').textContent = `API-equivalent · tier ${s.budget.tier} (reporting only)`;
 
   const n = (id, v) => { const el = $(id); if (el) el.textContent = v ? String(v) : ''; };
   n('n-decisions', (s.decisions || []).length);
   n('n-orders', (s.orders || []).length);
   n('n-news', (s.news || []).length);
   n('n-signals', (s.signals || []).filter((x) => !x.consumed).length);
-  // Two significant figures at most. The exact number is on the Money page;
-  // a nav chip is for noticing that it moved.
-  const spent = Number(s.budget.spent);
-  n('n-spend', spent === 0 ? '' : spent < 1 ? `$${spent.toFixed(2)}` : `$${spent.toFixed(0)}`);
 }
 
 /**
@@ -999,16 +971,9 @@ function render(s) {
   }
   $('halt').textContent = s.halted ? 'HALTED — resume' : 'Kill switch';
 
-  const pct = Math.min(100, (Number(s.budget.spent) / s.budget.cap) * 100);
-  $('bspent').textContent = cost(s.budget.spent);
-  $('bcap').textContent = '$' + s.budget.cap;
-  $('btier').textContent = s.budget.tier;
-  const g = $('bgauge');
-  g.className = 'gauge' + (pct >= 85 ? ' crit' : pct >= 70 ? ' warn' : '');
-  g.firstElementChild.style.width = pct.toFixed(1) + '%';
-
-  rows($('costs'), s.costByAgent, (r) =>
-    `<tr><td>${esc(r.agent)}</td><td class="num">${r.calls}</td><td class="num">${cost(r.cost)}</td><td class="num">${fmt(r.avg_latency, 0)}</td></tr>`, 4);
+  // Spend is no longer shown anywhere: it gates nothing, and a running dollar
+  // total on a page about trading is noise that reads like a constraint. It is
+  // still recorded, and `pnpm report` still totals it.
 
   drawEquity(s.equity || []);
 
@@ -1117,8 +1082,8 @@ function render(s) {
 
   rows($('llm'), s.llmCalls, (r) =>
     `<tr><td>${esc(r.agent)}</td><td>${esc(r.model)}</td><td class="num">${Number(r.tokens_in).toLocaleString()}</td>
-     <td class="num">${Number(r.tokens_out).toLocaleString()}</td><td class="num">${cost(r.cost_usd)}</td>
-     <td class="num">${(r.latency_ms / 1000).toFixed(1)}</td></tr>`, 6);
+     <td class="num">${Number(r.tokens_out).toLocaleString()}</td>
+     <td class="num">${(r.latency_ms / 1000).toFixed(1)}</td></tr>`, 5);
 
   rows($('logs'), s.agentLogs, (r) =>
     `<tr><td>${esc(r.agent)}</td><td>${esc(r.action)}</td><td>${esc(r.symbol ?? '—')}</td>

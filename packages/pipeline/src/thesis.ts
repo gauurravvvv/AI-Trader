@@ -28,14 +28,19 @@ const ANALYST_PROMPT = `You are a directional equity analyst. Given recent headl
 company and its recent price action, decide whether to be LONG, SHORT, or neither.
 
 Hard rules:
-- Every claim you make must be checkable against the headlines below and nothing
-  else. Do not use anything you remember about this company. If the headlines do
+- Every claim you make must be checkable against the stories below and nothing
+  else. Do not use anything you remember about this company. If the stories do
   not support a view, the answer is NONE.
-- NONE is the right answer most of the time. A headline is written to be clicked.
+- Where a story's full text is given, use it. A headline alone rarely
+  establishes timing, severity or magnitude; the body usually does, and a claim
+  drawn from the body is worth more than one drawn from the title.
+- Where only a headline is given, be correspondingly more cautious.
 - Do not confuse a report of a move with a cause of one. "Stock rose 4%" is not a
   reason to be long.
 - direction is about the NEXT few days, not the last few.
 - conviction above 70 requires a specific, dated, material fact — not a theme.
+- NONE remains a valid and common answer. But if the text does establish a
+  material, dated fact with a clear directional read, say so.
 
 Return ONLY JSON, no prose and no code fences:
 {"direction":"LONG|SHORT|NONE","conviction":0-100,"thesis":"one paragraph",
@@ -70,13 +75,14 @@ export type Challenge = z.infer<typeof ChallengeSchema>;
 const CHALLENGER_PROMPT = `You are the opposing side of a trading debate. Another analyst has proposed a
 trade. Your job is BOTH to check their facts and to argue against them.
 
-For each claim, decide against the headlines below ONLY:
+For each claim, decide against the stories below ONLY:
 - SUPPORTED   the headlines state this
 - UNSUPPORTED the headlines neither state nor contradict it — the analyst inferred it
 - CONTRADICTED the headlines say otherwise
 
 An inference is not a fact. If the analyst wrote "demand is accelerating" and the
-headline says "company announces new product", that is UNSUPPORTED.
+story only says "company announces new product", that is UNSUPPORTED. Where the
+full text is present, check the claim against the text and not merely the title.
 
 Then argue the other side properly: the strongest case for why this trade loses
 money, including what the analyst has not considered.
@@ -115,7 +121,13 @@ export interface ThesisDeps {
 
 export interface Evidence {
   symbol: string;
-  headlines: { title: string; publisher: string; publishedAt: string }[];
+  headlines: {
+    title: string;
+    publisher: string;
+    publishedAt: string;
+    /** Body of the story, when it could be fetched. */
+    body?: string;
+  }[];
   /** Move on the day, as a fraction. */
   movePct: number;
   /** Move over the last five sessions. */
@@ -130,11 +142,16 @@ export function renderEvidence(e: Evidence): string {
     `Move over 5 sessions: ${(e.move5dPct * 100).toFixed(2)}%`,
     `Overall market: ${e.regime}`,
     '',
-    'Headlines:',
-    ...e.headlines.map(
-      (h, i) => `${String(i)}. [${h.publishedAt.slice(0, 10)}] ${h.title} — ${h.publisher}`,
-    ),
+    'Stories:',
   ];
+  e.headlines.forEach((h, i) => {
+    lines.push('', `${String(i)}. [${h.publishedAt.slice(0, 10)}] ${h.title} — ${h.publisher}`);
+    // The body is what makes a claim checkable. Without it the analyst can
+    // only restate the headline, which is why it declined thirteen times in a
+    // row before this existed.
+    if (h.body !== undefined && h.body.trim() !== '') lines.push(h.body.trim());
+    else lines.push('(full text unavailable — headline only)');
+  });
   return lines.join('\n');
 }
 

@@ -22,9 +22,5 @@
     "@aegis/dashboard": "workspace:*",
     "@aegis/notify": "workspace:*"
   },
-  "scripts": {
-    "smoke:news": "node --env-file-if-exists=../../.env --import tsx src/smoke-news.ts",
-    "report": "node --env-file-if-exists=../../.env --import tsx src/report.ts",
-    "smoke:cost": "node --env-file-if-exists=../../.env --import tsx src/smoke-cost.ts"
-  }
+  "scripts": {}
 }
