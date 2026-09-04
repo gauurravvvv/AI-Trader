@@ -152,6 +152,26 @@ export class OrderRouter {
     return r.c > 0;
   }
 
+  /**
+   * Entries opened today on this venue.
+   *
+   * Counted from orders rather than decisions: a decision that was refused is
+   * not an entry, and counting it would let a run of rejections lock the system
+   * out of trading for the rest of the day.
+   */
+  entriesToday(): number {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT o.decision_id) c
+           FROM orders o JOIN decisions d ON d.id = o.decision_id
+          WHERE o.venue = ? AND date(o.created_at) = date('now')
+            AND o.status IN ('submitted','partial','filled')
+            AND COALESCE(d.rationale, '') NOT LIKE 'exit:%'`,
+      )
+      .get(this.adapter.venue) as { c: number };
+    return r.c;
+  }
+
   async buildContext(): Promise<Omit<RiskContext, 'adv' | 'duplicateRecent' | 'wouldBeDayTrade'>> {
     const acct = await this.adapter.getAccount();
     const open = this.ledger.open(this.adapter.venue);
@@ -171,6 +191,7 @@ export class OrderRouter {
       openPositions: this.ledger.openCount(this.adapter.venue),
       realisedPnlToday: this.ledger.realisedToday(this.adapter.venue),
       dayTradesLast5Days: this.dayTradesLast5Days(),
+      entriesToday: this.entriesToday(),
       // PDT is a US margin-equity rule. Crypto and India are not subject to it,
       // and applying it there would invent a constraint that does not exist.
       pdtApplies: this.adapter.market === 'US',

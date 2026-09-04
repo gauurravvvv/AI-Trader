@@ -18,6 +18,7 @@ const ctx = (over: Partial<RiskContext> = {}): RiskContext => ({
   openPositions: 0,
   realisedPnlToday: '0',
   dayTradesLast5Days: 0,
+  entriesToday: 0,
   wouldBeDayTrade: false,
   pdtApplies: true,
   adv: '1000000',
@@ -232,5 +233,51 @@ describe('pattern day trader rule', () => {
     const buy: ProposedOrder = { symbol: 'NVDA', side: 'buy', qty: '10', price: '100' };
     const r = evaluate(buy, ctx({ equity: '10000', wouldBeDayTrade: true, dayTradesLast5Days: 99 }));
     expect(r.rejectReasons).not.toContain('PATTERN_DAY_TRADER');
+  });
+});
+
+describe('daily trade cap', () => {
+  const buy: ProposedOrder = { symbol: 'NVDA', side: 'buy', qty: '10', price: '100' };
+
+  it('permits entries below the cap', () => {
+    expect(evaluate(buy, ctx({ entriesToday: 4 }), { ...DEFAULT_LIMITS, maxTradesPerDay: 5 }).passed)
+      .toBe(true);
+  });
+
+  it('refuses the entry that would exceed it', () => {
+    const r = evaluate(buy, ctx({ entriesToday: 5 }), { ...DEFAULT_LIMITS, maxTradesPerDay: 5 });
+    expect(r.passed).toBe(false);
+    expect(r.rejectReasons).toContain('DAILY_TRADE_CAP');
+  });
+
+  it('never blocks an exit — the cap bounds new risk, not the removal of it', () => {
+    const sell: ProposedOrder = { symbol: 'NVDA', side: 'sell', qty: '10', price: '100', intent: 'close' };
+    expect(evaluate(sell, ctx({ entriesToday: 99 })).passed).toBe(true);
+  });
+
+  it('does bound a SHORT entry, which is also new risk', () => {
+    const short: ProposedOrder = { symbol: 'NVDA', side: 'sell', qty: '10', price: '100', intent: 'open' };
+    const r = evaluate(short, ctx({ entriesToday: 5 }), { ...DEFAULT_LIMITS, maxTradesPerDay: 5 });
+    expect(r.rejectReasons).toContain('DAILY_TRADE_CAP');
+  });
+});
+
+describe('intent, not side', () => {
+  it('treats a short entry as an entry and applies the sizing gates', () => {
+    // Before intent existed this was read as an exit and skipped every one.
+    const huge: ProposedOrder = { symbol: 'NVDA', side: 'sell', qty: '99999', price: '100', intent: 'open' };
+    const r = evaluate(huge, ctx());
+    expect(r.passed).toBe(false);
+    expect(r.rejectReasons).toContain('POSITION_CAP');
+  });
+
+  it('treats a cover as an exit and lets it through', () => {
+    const cover: ProposedOrder = { symbol: 'NVDA', side: 'buy', qty: '10', price: '100', intent: 'close' };
+    expect(evaluate(cover, ctx({ marketOpen: false, entriesToday: 99 })).passed).toBe(true);
+  });
+
+  it('keeps the old reading when intent is omitted', () => {
+    const sell: ProposedOrder = { symbol: 'NVDA', side: 'sell', qty: '99999', price: '100' };
+    expect(evaluate(sell, ctx()).passed).toBe(true);
   });
 });

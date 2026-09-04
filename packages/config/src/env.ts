@@ -16,6 +16,8 @@ export interface AppConfig {
   sueThreshold: number;
   newsIntervalMin: number;
   maxFilingAgeDays: number;
+  maxOpenPositions: number;
+  maxTradesPerDay: number;
   dashboardPort: number;
 }
 
@@ -90,6 +92,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   // after a release; reading a two-month-old filing costs sonnet money for an
   // edge that was priced long ago.
   maxFilingAgeDays: num(env, 'MAX_FILING_AGE_DAYS', 10, 1, 120, true),
+  // How many positions may be held at once. Bounds total exposure.
+  maxOpenPositions: num(env, 'MAX_OPEN_POSITIONS', 8, 1, 100, true),
+  // How many NEW entries per day. Bounds churn and model spend, which the
+  // position cap alone does not.
+  maxTradesPerDay: num(env, 'MAX_TRADES_PER_DAY', 5, 1, 100, true),
     dashboardPort: num(env, 'DASHBOARD_PORT', 3777, 1024, 65_535, true),
   };
 }

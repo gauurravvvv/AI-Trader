@@ -14,7 +14,8 @@ export type RejectCode =
   | 'DUPLICATE'
   | 'INSUFFICIENT_CASH'
   | 'NO_QUOTE'
-  | 'PATTERN_DAY_TRADER';
+  | 'PATTERN_DAY_TRADER'
+  | 'DAILY_TRADE_CAP';
 
 export interface RiskLimits {
   maxPositionPct: number; // of equity
@@ -36,6 +37,12 @@ export interface RiskLimits {
    */
   pdtEquityFloor: string;
   pdtMaxDayTrades: number;
+  /**
+   * New entries permitted per day. Bounds churn and model spend, which
+   * maxOpenPositions does not: without it the system can open and close the
+   * same slot all day and pay for every round trip.
+   */
+  maxTradesPerDay: number;
 }
 
 export const DEFAULT_LIMITS: RiskLimits = {
@@ -49,6 +56,7 @@ export const DEFAULT_LIMITS: RiskLimits = {
   blocklist: [],
   pdtEquityFloor: '25000',
   pdtMaxDayTrades: 3,
+  maxTradesPerDay: 5,
 };
 
 export interface RiskContext {
@@ -68,6 +76,8 @@ export interface RiskContext {
   duplicateRecent: boolean;
   /** Round trips closed within the same session, last five business days. */
   dayTradesLast5Days: number;
+  /** Entries already opened today, this venue. */
+  entriesToday: number;
   /**
    * True when this order would close a position opened today — i.e. it is
    * itself a day trade. Only meaningful for sells.
@@ -251,6 +261,13 @@ export function evaluate(
       ? 'ADV unknown'
       : `${qty.div(ctx.adv).times(100).toFixed(3)}% of ADV vs cap ${String(limits.maxAdvParticipation * 100)}%`,
     'LIQUIDITY',
+  );
+
+  add(
+    'daily_trade_cap',
+    ctx.entriesToday < limits.maxTradesPerDay,
+    `${String(ctx.entriesToday)} entries today vs cap ${String(limits.maxTradesPerDay)}`,
+    'DAILY_TRADE_CAP',
   );
 
   add(

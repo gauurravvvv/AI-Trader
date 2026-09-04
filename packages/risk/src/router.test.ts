@@ -353,3 +353,44 @@ describe('partial fills', () => {
       .toBe('filled');
   });
 });
+
+describe('entriesToday', () => {
+  it('counts entries, not exits', async () => {
+    await router.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    expect(router.entriesToday()).toBe(1);
+
+    const exitId = db.prepare(
+      `INSERT INTO decisions (symbol, market, venue, side, rationale) VALUES ('NVDA','US','alpaca-paper','sell','exit: STOP_LOSS')`,
+    ).run().lastInsertRowid;
+    await new Promise((r) => setTimeout(r, 40));
+    await router.route(
+      { decisionId: Number(exitId), symbol: 'NVDA', side: 'sell', qty: '20', price: '100', intent: 'close' },
+      '1000000',
+    );
+    expect(router.entriesToday()).toBe(1);
+  });
+
+  it('does not count a refused order — a run of rejections must not lock out the day', async () => {
+    await router.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '99999', price: '100' },
+      '1000000',
+    );
+    expect(router.entriesToday()).toBe(0);
+  });
+
+  it('counts one entry per decision, not one per rung', async () => {
+    const id = newDecision();
+    await router.route(
+      { decisionId: id, rungIndex: 0, symbol: 'NVDA', side: 'buy', qty: '10', price: '100' },
+      '1000000',
+    );
+    await router.route(
+      { decisionId: id, rungIndex: 1, symbol: 'NVDA', side: 'buy', qty: '10', price: '100' },
+      '1000000',
+    );
+    expect(router.entriesToday()).toBe(1);
+  });
+});
