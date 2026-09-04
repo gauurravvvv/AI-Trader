@@ -24,6 +24,7 @@
   },
   "scripts": {
     "smoke:news": "tsx src/smoke-news.ts",
-    "report": "tsx src/report.ts"
+    "report": "tsx src/report.ts",
+    "smoke:cost": "tsx src/smoke-cost.ts"
   }
 }

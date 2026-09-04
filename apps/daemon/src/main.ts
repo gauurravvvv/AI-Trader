@@ -163,7 +163,12 @@ const pipelineDeps: PipelineDeps = {
 // The scout therefore watches the full universe even though only the US names
 // have a trading venue wired so far.
 const newsUniverse = universeFor(['US', 'CRYPTO', 'IN']);
-const newsDeps: NewsDeps = { ...pipelineDeps, news, universe: newsUniverse };
+const newsDeps: NewsDeps = {
+  ...pipelineDeps,
+  news,
+  universe: newsUniverse,
+  intervalMinutes: cfg.newsIntervalMin,
+};
 
 // The trader sees every scouted signal but can only act on markets with a venue
 // wired. India is scouted and not traded; that is deliberate, not an oversight.

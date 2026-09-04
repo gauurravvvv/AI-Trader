@@ -14,6 +14,7 @@ export interface AppConfig {
   auditFloor: number;
   claudeConcurrency: number;
   sueThreshold: number;
+  newsIntervalMin: number;
   dashboardPort: number;
 }
 
@@ -81,6 +82,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     // Each claude call is a full node process. Above ~8 the machine thrashes.
     claudeConcurrency: num(env, 'CLAUDE_CONCURRENCY', 3, 1, 8, true),
     sueThreshold: num(env, 'SUE_THRESHOLD', 1.5, 0, 10),
+  // Minutes between news sweeps. The single biggest lever on monthly spend:
+  // a measured tick costs ~$0.0146, so halving this doubles the news bill.
+  newsIntervalMin: num(env, 'NEWS_INTERVAL_MIN', 20, 2, 720, true),
     dashboardPort: num(env, 'DASHBOARD_PORT', 3777, 1024, 65_535, true),
   };
 }

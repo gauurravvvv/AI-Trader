@@ -75,9 +75,33 @@ So the budget is a first-class component, not an afterthought:
 deterministic code and never needed the model. Running out of credit must not leave
 an open position unmanaged, and a test asserts exactly that.
 
-Measured on this machine: a news triage tick is ~$0.003; an earnings read plus
-audit is a few cents. Model latency is 6–90s per call, which is why nothing here
+### What a call actually costs, and why the flags matter
+
+`claude -p` loads Claude Code's own system prompt on every invocation — every MCP
+server's tool schemas, every built-in tool, and per-machine sections like cwd and
+git status. It is billed as input, and it dwarfs anything you send.
+
+Measured on this machine, steady state per trivial haiku call:
+
+| Configuration | Cost |
+|---|---|
+| default, no flags | **$0.130** |
+| `--strict-mcp-config` | $0.0043 |
+| `+ --disallowed-tools` | $0.0034 |
+| `+ --system-prompt` | **$0.0028** |
+
+A 47× difference, none of it about our prompt. The default configuration is the
+worst case because the per-machine sections change between runs, so it invalidates
+its own cache on every call and pays creation price forever. Aegis passes all
+three flags; `pnpm smoke:cost` proves it on your machine.
+
+Real measured costs: a news sweep is **$0.0146**, an earnings read plus audit is a
+few cents. `NEWS_INTERVAL_MIN` is the biggest lever on the monthly bill — every 10
+minutes is ~$63/month, every 20 is ~$31. Latency is 3–90s per call, so nothing here
 assumes a fast round trip.
+
+Cost is read from the CLI's own `total_cost_usd`, not estimated from token counts.
+Estimating understated the real bill by more than two orders of magnitude.
 
 ---
 

@@ -7,6 +7,8 @@ export const SIG_NEWS = 'news_signal';
 
 export interface NewsDeps extends PipelineDeps {
   news: YahooNewsSource;
+  /** Minutes between sweeps. Directly proportional to monthly spend. */
+  intervalMinutes?: number;
   /** Stories older than this are history, not a signal. */
   maxAgeHours?: number;
   /** newsScore above which a story is worth emitting. */
@@ -57,7 +59,13 @@ export function interleave<T>(lists: T[][], cap: number): T[] {
 
 export class NewsScoutAgent extends BaseAgent {
   constructor(private readonly n: NewsDeps) {
-    super('news-scout', { intervalMs: 10 * 60 * 1000 }, n);
+    // Cost arithmetic, from a measured tick of $0.0146:
+    //   every 10 min -> 144 ticks/day -> ~$63/month, most of a $100 pool
+    //   every 20 min ->  72 ticks/day -> ~$31/month, leaving room for the
+    //                                    earnings reader and the auditor
+    // The tick is free when nothing new has published, so the real figure is
+    // lower overnight and at weekends. Tune with NEWS_INTERVAL_MIN.
+    super('news-scout', { intervalMs: (n.intervalMinutes ?? 20) * 60 * 1000 }, n);
   }
 
   override shouldRun(): boolean {

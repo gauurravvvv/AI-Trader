@@ -48,6 +48,11 @@ export abstract class BaseAgent {
     this.now = deps.now ?? ((): number => Date.now());
   }
 
+  /** How often this agent ticks. Readable so cadence can be asserted and shown. */
+  get intervalMs(): number {
+    return this.opts.intervalMs;
+  }
+
   /** Override to gate execution — market hours, open positions, budget tier. */
   shouldRun(): boolean {
     return true;

@@ -12,6 +12,7 @@ const reply = (text: string): AskFn => () =>
   Promise.resolve({
     model: 'haiku', text, tokensIn: 10, tokensOut: 10,
     costUsd: '0.0001', latencyMs: 5, promptHash: 'h',
+    cacheReadTokens: 27414, cacheCreateTokens: 0, costMeasured: true,
   } satisfies ClaudeResult);
 
 describe('buildBatch', () => {

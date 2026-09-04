@@ -30,6 +30,12 @@ export interface ClaudeResult {
   costUsd: string;
   latencyMs: number;
   promptHash: string;
+  /** Tokens served from the prompt cache. Zero means the cache missed. */
+  cacheReadTokens: number;
+  /** Tokens written to the cache. Large and repeated means it keeps missing. */
+  cacheCreateTokens: number;
+  /** False when the CLI gave no usage block and the cost had to be estimated. */
+  costMeasured: boolean;
 }
 
 export class ClaudeError extends Error {
@@ -43,8 +49,112 @@ export class ClaudeError extends Error {
   }
 }
 
+/**
+ * Tools this process never wants the model to reach for.
+ *
+ * Every tool the CLI offers ships its schema in the system prompt and is billed
+ * on every call. None of these are useful to an agent whose entire job is to
+ * return JSON about a filing, and dropping them removes ~8k tokens per call.
+ */
+const UNUSED_TOOLS = [
+  'Bash', 'Edit', 'Write', 'Read', 'Glob', 'Grep',
+  'WebFetch', 'WebSearch', 'Task', 'TodoWrite', 'NotebookEdit',
+];
+
+const SYSTEM_PROMPT =
+  'You are a precise financial analyst. Answer only what is asked, in the exact ' +
+  'format requested. Never speculate beyond the text you are given.';
+
+/**
+ * Flags that decide what this system costs to run.
+ *
+ * Measured on this machine with `--output-format json`, steady state per trivial
+ * haiku call:
+ *
+ *   default (no flags)                        $0.130
+ *   + --strict-mcp-config                     $0.0043
+ *   + --disallowed-tools                      $0.0034
+ *   + --system-prompt                         $0.0028
+ *
+ * A 47x difference, and none of it is about the prompt we send. `claude -p`
+ * loads Claude Code's own system prompt — every MCP server's tool schemas,
+ * every built-in tool, and per-machine sections like cwd and git status — and
+ * bills it as cache-creation input. The per-machine sections change between
+ * invocations, so the default configuration invalidates its own cache on every
+ * single call and pays full creation price forever.
+ *
+ * `--strict-mcp-config` is the big one: MCP tool schemas alone were over half
+ * the context. Replacing the system prompt drops the rest and, because ours is
+ * byte-identical every time, the cache finally holds.
+ */
 export function buildArgs(model: ModelId, prompt: string): string[] {
-  return ['--print', '--model', model, '-p', prompt];
+  return [
+    '--print',
+    '--model',
+    model,
+    '--output-format',
+    'json',
+    '--strict-mcp-config',
+    '--disallowed-tools',
+    UNUSED_TOOLS.join(' '),
+    '--system-prompt',
+    SYSTEM_PROMPT,
+    '-p',
+    prompt,
+  ];
+}
+
+interface CliUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+interface CliEnvelope {
+  result?: string;
+  is_error?: boolean;
+  total_cost_usd?: number;
+  usage?: CliUsage;
+}
+
+export interface ParsedCli {
+  text: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: string | null;
+  cacheReadTokens: number;
+  cacheCreateTokens: number;
+}
+
+/**
+ * Read the CLI's JSON envelope.
+ *
+ * `total_cost_usd` is what Anthropic actually billed, and it is the only number
+ * worth recording. Estimating from our own prompt length understated the true
+ * cost by more than two orders of magnitude, because the overwhelming majority
+ * of every bill is Claude Code's system prompt rather than anything we wrote.
+ *
+ * Falls back to the raw text when the envelope is absent, so an older CLI or an
+ * unexpected output mode degrades to the previous behaviour instead of failing.
+ */
+export function parseCliJson(stdout: string): ParsedCli | null {
+  let env: CliEnvelope;
+  try {
+    env = JSON.parse(stdout) as CliEnvelope;
+  } catch {
+    return null;
+  }
+  if (typeof env.result !== 'string') return null;
+  const u = env.usage ?? {};
+  return {
+    text: env.result,
+    tokensIn: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
+    tokensOut: u.output_tokens ?? 0,
+    costUsd: typeof env.total_cost_usd === 'number' ? env.total_cost_usd.toFixed(6) : null,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+    cacheCreateTokens: u.cache_creation_input_tokens ?? 0,
+  };
 }
 
 /**
@@ -88,17 +198,35 @@ export async function askClaude(prompt: string, opts: AskOpts): Promise<ClaudeRe
   await acquire();
   const started = Date.now();
   try {
-    const text = await run(prompt, opts);
-    const tokensIn = estimateTokens(prompt);
-    const tokensOut = estimateTokens(text);
+    const stdout = await run(prompt, opts);
+    const promptHash = createHash('sha256').update(prompt).digest('hex').slice(0, 16);
+    const latencyMs = Date.now() - started;
+    const parsed = parseCliJson(stdout);
+
+    if (parsed === null) {
+      // No envelope: an older CLI, or a mode that printed bare text. Estimate,
+      // and say the cost is an estimate so the budget can be read sceptically.
+      const tokensIn = estimateTokens(prompt);
+      const tokensOut = estimateTokens(stdout);
+      return {
+        model: opts.model, text: stdout, tokensIn, tokensOut,
+        costUsd: estimateCost(opts.model, tokensIn, tokensOut),
+        latencyMs, promptHash,
+        cacheReadTokens: 0, cacheCreateTokens: 0, costMeasured: false,
+      };
+    }
+
     return {
       model: opts.model,
-      text,
-      tokensIn,
-      tokensOut,
-      costUsd: estimateCost(opts.model, tokensIn, tokensOut),
-      latencyMs: Date.now() - started,
-      promptHash: createHash('sha256').update(prompt).digest('hex').slice(0, 16),
+      text: parsed.text,
+      tokensIn: parsed.tokensIn,
+      tokensOut: parsed.tokensOut,
+      costUsd: parsed.costUsd ?? estimateCost(opts.model, parsed.tokensIn, parsed.tokensOut),
+      latencyMs,
+      promptHash,
+      cacheReadTokens: parsed.cacheReadTokens,
+      cacheCreateTokens: parsed.cacheCreateTokens,
+      costMeasured: parsed.costUsd !== null,
     };
   } finally {
     release();

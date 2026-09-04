@@ -70,6 +70,9 @@ function scriptedAsk(reads: unknown[]): { ask: AskFn; calls: string[] } {
       costUsd: '0.0001',
       latencyMs: 10,
       promptHash: 'test',
+      cacheReadTokens: 27414,
+      cacheCreateTokens: 0,
+      costMeasured: true,
     } satisfies ClaudeResult);
   };
   return { ask, calls };
@@ -270,6 +273,7 @@ describe('EarningsReaderAgent', () => {
           ? 'the model rambled instead of answering'
           : JSON.stringify(STRONG_READ),
         tokensIn: 1, tokensOut: 1, costUsd: '0', latencyMs: 1, promptHash: 'x',
+        cacheReadTokens: 0, cacheCreateTokens: 0, costMeasured: true,
       } satisfies ClaudeResult);
     await runFullCycle({ ask });
     expect(decisions()).toHaveLength(0);

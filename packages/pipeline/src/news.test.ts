@@ -34,6 +34,7 @@ const reply = (text: string): AskFn => () =>
   Promise.resolve({
     model: 'haiku', text, tokensIn: 10, tokensOut: 10,
     costUsd: '0.0001', latencyMs: 5, promptHash: 'h',
+    cacheReadTokens: 27414, cacheCreateTokens: 0, costMeasured: true,
   } satisfies ClaudeResult);
 
 let db: Db;
@@ -220,5 +221,17 @@ describe('cap starvation', () => {
       ask: reply('{"items":[]}'),
     })).execute();
     expect(lines.join('\n')).not.toContain('will not be looked at');
+  });
+});
+
+describe('sweep cadence', () => {
+  it('defaults to 20 minutes — the interval is the monthly bill', () => {
+    // A measured tick costs ~$0.0146. Every 10 minutes is ~$63/month against a
+    // $100 pool; every 20 leaves room for the earnings reader and the auditor.
+    expect(new NewsScoutAgent(deps()).intervalMs).toBe(20 * 60 * 1000);
+  });
+
+  it('honours an override', () => {
+    expect(new NewsScoutAgent(deps({ intervalMinutes: 5 })).intervalMs).toBe(5 * 60 * 1000);
   });
 });
