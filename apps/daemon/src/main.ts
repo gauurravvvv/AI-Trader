@@ -4,32 +4,24 @@ import { createLogger } from '@aegis/logger';
 import { BudgetGovernor } from '@aegis/budget';
 import { SignalBus, Orchestrator, startHeartbeat, type AgentDeps } from '@aegis/agents';
 import { setConcurrency } from '@aegis/claude';
-import {
-  SimAdapter, US_COSTS, CRYPTO_COSTS, IN_COSTS,
-  US_CALENDAR, CRYPTO_CALENDAR, IN_CALENDAR,
-  holidaysCoverYear,
-  type FillEvent,
-} from '@aegis/brokers';
-import { YahooPriceSource, YahooConsensus, YahooNewsSource } from '@aegis/marketdata';
+import { SimAdapter, US_COSTS, US_CALENDAR, holidaysCoverYear, type FillEvent } from '@aegis/brokers';
+import { YahooPriceSource, YahooNewsSource } from '@aegis/marketdata';
 import { Ledger, Reconciler } from '@aegis/ledger';
-import { OrderRouter, isHalted } from '@aegis/risk';
-import { EdgarClient } from '@aegis/edgar';
+import { OrderRouter, isHalted, DEFAULT_LIMITS } from '@aegis/risk';
 import { Dashboard } from '@aegis/dashboard';
-import { Notifier, ConsoleTransport, fillBody, type NotifyHook } from '@aegis/notify';
 import {
-  EdgarPollerAgent,
-  EarningsReaderAgent,
-  PositionGuardianAgent,
+  Notifier, ConsoleTransport, SmtpTransport, smtpFromEnv, fillBody, type NotifyHook, type Transport,
+} from '@aegis/notify';
+import {
+  MarketRegimeAgent,
   NewsScoutAgent,
-  NewsTraderAgent,
-  ReflectorAgent,
+  SentinelAgent,
+  PositionGuardianAgent,
   EntryLadderAgent,
+  ReflectorAgent,
   DailySummary,
-  universeFor,
+  US_UNIVERSE,
   type PipelineDeps,
-  type NewsDeps,
-  type NewsTraderDeps,
-  type Venue,
 } from '@aegis/pipeline';
 
 const cfg = loadConfig(process.env);
@@ -61,62 +53,33 @@ const budget = new BudgetGovernor(db, cfg.monthlyBudgetUsd, cycleStart, (n) => {
 });
 setConcurrency(cfg.claudeConcurrency);
 
-// ── Market data and venue. Both keyless: no signup, no API key. ──
+// ── Market data and venue. Keyless: no signup, no API key. ──
 const prices = new YahooPriceSource();
-const consensus = new YahooConsensus();
 const news = new YahooNewsSource();
-const startingCash = process.env.STARTING_CASH ?? '100000';
 
+// US equities only. Short selling is enabled: over half of all news is bearish,
+// and a system that can only express one direction throws that away.
 const adapter = new SimAdapter(
   'sim-us',
   'US',
   prices,
   US_COSTS,
-  startingCash,
-  { tickSize: '0.01', lotSize: '1', minNotional: '1', supportsFractional: false, supportsShort: false },
+  process.env.STARTING_CASH ?? '100000',
+  { tickSize: '0.01', lotSize: '1', minNotional: '1', supportsFractional: false, supportsShort: true },
   US_CALENDAR,
-);
-
-// Crypto trades around the clock, in fractions, on a different cost stack.
-// Note what the 24/7 calendar removes: the market-hours gate is the guard that
-// stops the US pipeline overnight, so on this venue the position caps, the
-// daily loss stop and the kill switch are the only things between a bad signal
-// at 03:00 and a filled order.
-const cryptoAdapter = new SimAdapter(
-  'sim-crypto',
-  'CRYPTO',
-  prices,
-  CRYPTO_COSTS,
-  process.env.STARTING_CASH_CRYPTO ?? '25000',
-  { tickSize: '0.01', lotSize: '0.0001', minNotional: '10', supportsFractional: true, supportsShort: false },
-  CRYPTO_CALENDAR,
-);
-
-// India. The full statutory cost stack is material and is modelled rather than
-// waved away: brokerage, STT, exchange charges, GST and stamp duty, plus a flat
-// per-order fee. No Indian broker offers a real paper sandbox, and SEBI's algo
-// framework has required static-IP whitelisting, a registered strategy ID and
-// exchange empanelment since 2026-04-01 — simulating keeps that surface at zero.
-const indiaAdapter = new SimAdapter(
-  'sim-india',
-  'IN',
-  prices,
-  IN_COSTS,
-  process.env.STARTING_CASH_INDIA ?? '500000',
-  { tickSize: '0.05', lotSize: '1', minNotional: '500', supportsFractional: false, supportsShort: false },
-  IN_CALENDAR,
 );
 
 const ledger = new Ledger(db);
 
-// Console transport by default: the system must be fully runnable with no email
-// provider configured, and a missing SMTP account must not silently disable the
-// record of what was decided. Set NOTIFY_TO with a real transport to send.
+// Real email when SMTP is configured, the terminal otherwise. A half-set
+// configuration throws inside smtpFromEnv rather than silently not sending.
+const smtp = smtpFromEnv(process.env);
+const transport: Transport = smtp ? new SmtpTransport(smtp, log) : new ConsoleTransport(log);
 const notifier = new Notifier({
   db,
   log,
-  transport: new ConsoleTransport(log),
-  to: process.env.NOTIFY_TO ?? 'operator@localhost',
+  transport,
+  to: process.env.NOTIFY_TO ?? smtp?.from ?? 'operator@localhost',
 });
 const stopNotifier = notifier.start(15_000);
 raise = (n) => {
@@ -128,38 +91,23 @@ const onFill = (venue: string) => (f: FillEvent) => {
   notifier.enqueue({
     kind: 'ORDER_FILLED',
     subject: `${f.side.toUpperCase()} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`,
-    body: fillBody({
-      symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, fee: f.fee,
-    }),
+    body: fillBody({ symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, fee: f.fee }),
   });
 };
 
-const router = new OrderRouter({ db, adapter, ledger, notify: raise, onFill: onFill(adapter.venue) });
+const router = new OrderRouter({
+  db,
+  adapter,
+  ledger,
+  notify: raise,
+  onFill: onFill(adapter.venue),
+  limits: {
+    ...DEFAULT_LIMITS,
+    maxOpenPositions: cfg.maxOpenPositions,
+    maxTradesPerDay: cfg.maxTradesPerDay,
+  },
+});
 router.start();
-
-const cryptoRouter = new OrderRouter({
-  db,
-  adapter: cryptoAdapter,
-  ledger,
-  notify: raise,
-  onFill: onFill(cryptoAdapter.venue),
-});
-cryptoRouter.start();
-
-const indiaRouter = new OrderRouter({
-  db,
-  adapter: indiaAdapter,
-  ledger,
-  notify: raise,
-  onFill: onFill(indiaAdapter.venue),
-});
-indiaRouter.start();
-
-const venues: Venue[] = [
-  { market: 'US', router, ledger },
-  { market: 'CRYPTO', router: cryptoRouter, ledger },
-  { market: 'IN', router: indiaRouter, ledger },
-];
 
 const reconciler = new Reconciler(ledger, adapter, db);
 reconciler.onBreak((r) => {
@@ -172,74 +120,59 @@ reconciler.onBreak((r) => {
 });
 const stopReconciler = reconciler.start(60_000);
 
-const edgar = new EdgarClient({
-  userAgent: process.env.SEC_USER_AGENT ?? 'Aegis Research aegis@example.com',
-});
-
 const base: AgentDeps = { db, bus, log, budget };
+const universe = US_UNIVERSE;
 const pipelineDeps: PipelineDeps = {
   ...base,
-  edgar,
-  consensus,
+  // The earnings path is retired: it only fires four times a year per name and
+  // the user asked not to depend on it. These are unused by the agents below
+  // and kept only because PipelineDeps is shared.
+  edgar: {} as never,
+  consensus: {} as never,
   prices,
   router,
-  universe: universeFor(['US']),
+  universe,
   sueThreshold: cfg.sueThreshold,
   auditFloor: cfg.auditFloor,
-  maxFilingAgeDays: cfg.maxFilingAgeDays,
   autonomy,
   notify: raise,
 };
 
-// News is the only alpha source that reaches all three markets: crypto has no
-// regulator to file with and Indian results go to the exchanges, not the SEC.
-// The scout therefore watches the full universe even though only the US names
-// have a trading venue wired so far.
-const newsUniverse = universeFor(['US', 'CRYPTO', 'IN']);
-const newsDeps: NewsDeps = {
-  ...pipelineDeps,
-  news,
-  universe: newsUniverse,
-  intervalMinutes: cfg.newsIntervalMin,
-};
-
-// The trader sees every scouted signal but can only act on markets with a venue
-// wired. India is scouted and not traded; that is deliberate, not an oversight.
-const traderDeps: NewsTraderDeps = { ...pipelineDeps, venues, universe: newsUniverse };
-
-// One summary per calendar day, idempotent on the day rather than on a timer,
-// so a restart cannot produce a second one.
 const daily = new DailySummary(db, budget, adapter.venue, raise);
 
+// ── The loop, in the order it runs ──
+//
+//   market-regime   what is the market doing?        no model
+//   news-scout      what happened to these names?    haiku, one batched call
+//   sentinel        screen -> analyst -> challenger  two sonnet calls
+//   ladder          walk the staged entry            no model
+//   guardian        stop, target, trail, thesis      no model
+//   reflector       what should change next time     haiku
+//
+// Three of six spend money, and only the sentinel can spend without bound —
+// which is why it carries a hard daily cap of its own.
 const orchestrator = new Orchestrator(log);
-orchestrator.register(new EdgarPollerAgent(pipelineDeps), 0);
-orchestrator.register(new EarningsReaderAgent(pipelineDeps), 10_000);
+orchestrator.register(new MarketRegimeAgent({ ...pipelineDeps, prices }), 0);
+orchestrator.register(
+  new NewsScoutAgent({ ...pipelineDeps, news, intervalMinutes: cfg.newsIntervalMin }),
+  15_000,
+);
+orchestrator.register(
+  new SentinelAgent({
+    ...pipelineDeps,
+    ledger,
+    maxAnalysesPerDay: cfg.maxAnalysesPerDay,
+    baseSizePct: cfg.baseSizePct,
+    analystModel: cfg.analystModel,
+    challengerModel: cfg.challengerModel,
+  }),
+  30_000,
+);
+orchestrator.register(new EntryLadderAgent({ ...pipelineDeps, prices, router }), 45_000);
 // Runs regardless of budget tier: the Governor may stop us opening a position,
 // it must never stop us closing one.
-orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 20_000);
-orchestrator.register(new NewsScoutAgent(newsDeps), 30_000);
-orchestrator.register(new NewsTraderAgent(traderDeps), 40_000);
-// A guardian per venue: exits are per-book, and crypto's book never closes.
-orchestrator.register(
-  new PositionGuardianAgent({ ...pipelineDeps, ledger, router: cryptoRouter }),
-  50_000,
-);
-// Reads closed trades and records what to do differently. Alpha-aware: a +8%
-// trade in a +12% market is not a win, and scoring it as one would teach the
-// system to repeat whatever it did in a bull market.
-orchestrator.register(
-  new PositionGuardianAgent({ ...pipelineDeps, ledger, router: indiaRouter }),
-  55_000,
-);
-// Reads closed trades and records what to do differently. Alpha-aware: a +8%
-// trade in a +12% market is not a win, and scoring it as one would teach the
-// system to repeat whatever it did in a bull market.
-orchestrator.register(new ReflectorAgent({ ...pipelineDeps, prices }), 60_000);
-// One ladder per venue. Entries are staged rather than sent whole, so the
-// market gets a chance to disagree between rungs.
-for (const [i, r] of [router, cryptoRouter, indiaRouter].entries()) {
-  orchestrator.register(new EntryLadderAgent({ ...pipelineDeps, prices, router: r }), 65_000 + i * 5_000);
-}
+orchestrator.register(new PositionGuardianAgent({ ...pipelineDeps, ledger }), 60_000);
+orchestrator.register(new ReflectorAgent({ ...pipelineDeps, prices }), 90_000);
 
 const dashboard = new Dashboard({
   db,
@@ -247,7 +180,7 @@ const dashboard = new Dashboard({
   monthlyBudgetUsd: cfg.monthlyBudgetUsd,
   autonomy,
   venue: adapter.venue,
-  venues: venues.map((v) => v.router.venue),
+  venues: [adapter.venue],
   onHaltChange: (h) => {
     log.warn('dashboard', h ? 'KILL SWITCH ENGAGED from the dashboard' : 'halt cleared');
     notifier.enqueue({
@@ -267,25 +200,24 @@ const DASH_PUSH_MS = 3000;
 log.ok('daemon', `aegis up · mode=${cfg.tradingMode} · autonomy=${autonomy} · db=${cfg.dbPath}`);
 log.event(
   'daemon',
-  `venue=${adapter.venue} (simulated) · budget tier ${budget.tier()} · concurrency ${String(cfg.claudeConcurrency)}`,
+  `venue ${adapter.venue} (simulated, long and short) · budget tier ${budget.tier()} · concurrency ${String(cfg.claudeConcurrency)}`,
 );
 log.event(
   'daemon',
-  `earnings universe ${String(pipelineDeps.universe.length)} US names · SUE gate ${String(cfg.sueThreshold)} · audit floor ${String(cfg.auditFloor)}`,
+  `universe ${String(universe.length)} US names · news sweep every ${String(cfg.newsIntervalMin)}m`,
 );
 log.event(
   'daemon',
-  `news universe ${String(newsUniverse.length)} names across US, crypto and India`,
+  `limits: ${String(cfg.maxOpenPositions)} open · ${String(cfg.maxTradesPerDay)} entries/day · ` +
+    `${String(cfg.maxAnalysesPerDay)} analyses/day · ${(cfg.baseSizePct * 100).toFixed(1)}% base size`,
 );
 log.event(
   'daemon',
-  `venues: ${venues.map((v) => `${v.router.venue} (${v.market})`).join(', ')}`,
+  `debate: ${cfg.analystModel} proposes, ${cfg.challengerModel} challenges`,
 );
+log.event('daemon', `notifications via ${transport.name}${smtp ? ` → ${smtp.host}` : ''}`);
 if (!holidaysCoverYear(new Date(), 'America/New_York')) {
-  log.warn(
-    'daemon',
-    'the exchange holiday lists do not cover this year — sessions on unlisted holidays will look open',
-  );
+  log.warn('daemon', 'the exchange holiday list does not cover this year — unlisted holidays will look open');
 }
 if (isHalted(db)) log.warn('daemon', 'system is HALTED — clear it to resume trading');
 if (autonomy === 'SHADOW') {
@@ -294,6 +226,30 @@ if (autonomy === 'SHADOW') {
 
 orchestrator.start();
 log.ok('dashboard', `http://localhost:${String(cfg.dashboardPort)}`);
+
+if (smtp) {
+  // Reported, not enforced: a mail server that is briefly unreachable should
+  // not stop the daemon, and the outbox retries.
+  void new SmtpTransport(smtp, log).verify().then((ok) => {
+    if (ok) log.ok('notifier', `SMTP verified — mail will go to ${notifier.to}`);
+  });
+}
+notifier.enqueue({
+  kind: 'DAILY_SUMMARY',
+  subject: `Aegis started — ${autonomy} on ${adapter.venue}`,
+  body: [
+    `Aegis is up in ${autonomy} mode against ${adapter.venue}.`,
+    '',
+    `Universe:   ${String(universe.length)} US names`,
+    `Limits:     ${String(cfg.maxOpenPositions)} open positions, ${String(cfg.maxTradesPerDay)} entries/day`,
+    `Budget:     $${String(cfg.monthlyBudgetUsd)} this cycle, tier ${budget.tier()}`,
+    `Dashboard:  http://localhost:${String(cfg.dashboardPort)}`,
+    '',
+    autonomy === 'AUTO'
+      ? 'Simulated orders WILL be placed. Paper money only.'
+      : 'SHADOW mode: decisions are recorded, no orders are placed.',
+  ].join('\n'),
+});
 
 const dashTimer = setInterval(() => {
   dashboard.broadcast('tick', dashboard.snapshot());
@@ -321,8 +277,6 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     dashboard.stop();
     stopReconciler();
     router.stop();
-    cryptoRouter.stop();
-    indiaRouter.stop();
     orchestrator.stop();
     db.close();
     log.ok('daemon', 'clean shutdown');

@@ -36,6 +36,50 @@ describe('loadConfig', () => {
   });
 
   it('throws when a required variable is missing', () => {
+    // Deliberately omits DB_PATH — that is the point of the test.
     expect(() => loadConfig({ TRADING_MODE: 'paper' })).toThrow(/DB_PATH/);
+  });
+});
+
+describe('debate models', () => {
+  it('defaults to the cheap model proposing and the expensive one vetoing', () => {
+    const c = loadConfig(base);
+    expect(c.analystModel).toBe('haiku');
+    expect(c.challengerModel).toBe('sonnet');
+  });
+
+  it('accepts an override', () => {
+    const c = loadConfig({ ...base, ANALYST_MODEL: 'sonnet', CHALLENGER_MODEL: 'haiku' });
+    expect(c.analystModel).toBe('sonnet');
+    expect(c.challengerModel).toBe('haiku');
+  });
+
+  it('refuses a model that does not exist rather than falling back silently', () => {
+    expect(() => loadConfig({ ...base, ANALYST_MODEL: 'gpt-4' })).toThrow('ANALYST_MODEL');
+  });
+});
+
+describe('limits', () => {
+  it('has usable defaults', () => {
+    const c = loadConfig(base);
+    expect(c.maxOpenPositions).toBe(8);
+    expect(c.maxTradesPerDay).toBe(5);
+    expect(c.maxAnalysesPerDay).toBe(12);
+    expect(c.baseSizePct).toBeCloseTo(0.03);
+  });
+
+  it('reads overrides', () => {
+    const c = loadConfig({
+      ...base, MAX_OPEN_POSITIONS: '3',
+      MAX_TRADES_PER_DAY: '2', MAX_ANALYSES_PER_DAY: '4', BASE_SIZE_PCT: '0.01',
+    });
+    expect(c.maxOpenPositions).toBe(3);
+    expect(c.maxTradesPerDay).toBe(2);
+    expect(c.maxAnalysesPerDay).toBe(4);
+    expect(c.baseSizePct).toBeCloseTo(0.01);
+  });
+
+  it('refuses a position size that would bet the account on one name', () => {
+    expect(() => loadConfig({ ...base, BASE_SIZE_PCT: '0.9' })).toThrow('BASE_SIZE_PCT');
   });
 });

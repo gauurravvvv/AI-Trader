@@ -90,6 +90,26 @@ export class SignalBus {
     return rows.map(hydrate);
   }
 
+  /**
+   * Most recent signals of a type, consumed or not.
+   *
+   * `read` is a work queue and skips anything already taken. Some signals are
+   * ambient state rather than work — the market regime is read by several
+   * agents and consumed by none, and reading it through the queue would mean
+   * the first agent to look made it invisible to the rest.
+   */
+  latest(signalTypes: string[], limit = 1): Signal[] {
+    if (signalTypes.length === 0) return [];
+    const ph = signalTypes.map(() => '?').join(',');
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM agent_signals WHERE signal_type IN (${ph})
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(...signalTypes, limit) as Row[];
+    return rows.map(hydrate);
+  }
+
   consume(ids: number[], by: string): void {
     if (ids.length === 0) return; // an empty IN () is a syntax error
     const ph = ids.map(() => '?').join(',');

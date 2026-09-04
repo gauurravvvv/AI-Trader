@@ -68,6 +68,11 @@ export interface NotifierDeps {
  * a failed send never blocks or reverses a trade.
  */
 export class Notifier {
+  /** Where mail is going. Read at boot so the log can say. */
+  get to(): string {
+    return this.deps.to;
+  }
+
   private readonly digestible: Notification[] = [];
   private windowStart = 0;
 

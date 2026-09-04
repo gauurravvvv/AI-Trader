@@ -18,6 +18,10 @@ export interface AppConfig {
   maxFilingAgeDays: number;
   maxOpenPositions: number;
   maxTradesPerDay: number;
+  maxAnalysesPerDay: number;
+  baseSizePct: number;
+  analystModel: 'haiku' | 'sonnet' | 'opus';
+  challengerModel: 'haiku' | 'sonnet' | 'opus';
   dashboardPort: number;
 }
 
@@ -55,6 +59,21 @@ function num(
   if (int && !Number.isInteger(n)) throw new ConfigError(key, `expected an integer, got ${n}`);
   if (n < min || n > max) throw new ConfigError(key, `expected ${min}-${max}, got ${n}`);
   return n;
+}
+
+const MODELS = ['haiku', 'sonnet', 'opus'] as const;
+
+function model(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: (typeof MODELS)[number],
+): (typeof MODELS)[number] {
+  const raw = env[key]?.trim();
+  if (raw === undefined || raw === '') return fallback;
+  if (!(MODELS as readonly string[]).includes(raw)) {
+    throw new ConfigError(key, `must be one of ${MODELS.join(', ')}; got ${JSON.stringify(raw)}`);
+  }
+  return raw as (typeof MODELS)[number];
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
@@ -97,6 +116,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   // How many NEW entries per day. Bounds churn and model spend, which the
   // position cap alone does not.
   maxTradesPerDay: num(env, 'MAX_TRADES_PER_DAY', 5, 1, 100, true),
+  // Analyst/challenger pairs per day. The main cost control: this is the only
+  // agent that can spend without bound, since every other one is either
+  // arithmetic or reads a fixed-size batch.
+  maxAnalysesPerDay: num(env, 'MAX_ANALYSES_PER_DAY', 12, 1, 200, true),
+  // Fraction of equity per trade BEFORE debate strength and regime scaling.
+  baseSizePct: num(env, 'BASE_SIZE_PCT', 0.03, 0.001, 0.2),
+  // Measured: haiku ~$0.003/call, sonnet ~$0.05 even warm. Cheap model forms
+  // the view, expensive model holds the veto.
+  analystModel: model(env, 'ANALYST_MODEL', 'haiku'),
+  challengerModel: model(env, 'CHALLENGER_MODEL', 'sonnet'),
     dashboardPort: num(env, 'DASHBOARD_PORT', 3777, 1024, 65_535, true),
   };
 }

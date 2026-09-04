@@ -22,3 +22,9 @@ export { EntryLadderAgent, planEntry, savePlan, activePlans, nextRung, markRungP
 export type { Rung, EntryPlan, PlanRow } from './planner.js';
 export { recordProvenance, provenanceFor, degradedDecisions, provenanceSummary } from './provenance.js';
 export type { Source, SourceKind, ProvenanceRow } from './provenance.js';
+export { MarketRegimeAgent, classifyRegime, sizeMultiplier, currentRegime, SIG_REGIME } from './regime.js';
+export type { Regime, RegimeRead, RegimeDeps } from './regime.js';
+export { proposeThesis, challengeThesis, resolveDebate, renderEvidence, DEFAULT_DEBATE, ThesisSchema, ChallengeSchema } from './thesis.js';
+export type { Thesis, Challenge, Evidence, DebateResult, DebateRule, ThesisDeps } from './thesis.js';
+export { SentinelAgent, screen, SIG_THESIS } from './sentinel.js';
+export type { Candidate, SentinelDeps } from './sentinel.js';
