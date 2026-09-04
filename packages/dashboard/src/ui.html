@@ -88,66 +88,92 @@
   .col{display:flex;flex-direction:column;height:100vh;overflow-y:auto;min-width:0}
 
   nav.side{height:100vh;overflow-y:auto;overflow-x:hidden;background:var(--bar);
-    border-right:1px solid var(--rule);padding:.6rem .5rem 1rem;display:flex;
-    flex-direction:column;gap:1px}
-  nav.side .brand{display:flex;align-items:center;gap:.55rem;padding:.3rem .4rem .75rem;
-    font-weight:650;letter-spacing:-.01em;white-space:nowrap}
-  nav.side .brand .bname{flex:1 1 auto}
-  #navtoggle{flex:0 0 auto;background:none;border:1px solid var(--rule);color:var(--ink3);
-    border-radius:5px;width:24px;height:24px;line-height:1;cursor:pointer;font-size:.8rem;
-    display:grid;place-items:center;padding:0}
-  #navtoggle:hover{background:var(--sunk);color:var(--ink)}
+    border-right:1px solid var(--rule);padding:.75rem .6rem 1rem;display:flex;
+    flex-direction:column;gap:2px}
 
-  .sidefoot{border-top:1px solid var(--rule2);padding-top:.5rem;margin-top:.5rem;
-    display:flex;flex-direction:column;gap:.35rem}
-  .sess{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem;font-size:.78rem;
-    color:var(--ink2);white-space:nowrap}
-  .sess .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--ink3)}
-  .sess.open .dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
-  .sess.pre .dot,.sess.after .dot{background:var(--warn)}
-  .sess.shut .dot{background:var(--ink3)}
-  #theme{display:flex;align-items:center;gap:.6rem;background:none;border:1px solid var(--rule);
-    color:var(--ink2);border-radius:5px;padding:.4rem .5rem;font-size:.8rem;cursor:pointer;
-    width:100%;text-align:left}
-  #theme:hover{background:var(--sunk);color:var(--ink)}
-  #theme .ico{width:18px;text-align:center;flex:0 0 auto}
-  nav.side .brand .mark{flex:0 0 auto;width:22px;height:22px;border-radius:5px;
-    background:var(--accent);color:var(--paper);display:grid;place-items:center;
-    font-size:.72rem;font-weight:700}
-  nav.side a{display:flex;align-items:center;gap:.6rem;padding:.46rem .5rem;border-radius:5px;
-    color:var(--ink2);text-decoration:none;font-size:.86rem;cursor:pointer;white-space:nowrap}
-  nav.side a:hover{background:var(--sunk);color:var(--ink)}
-  nav.side a.on{background:var(--paper);color:var(--ink);font-weight:600;
-    box-shadow:inset 2px 0 0 var(--accent)}
-  nav.side a .ico{flex:0 0 auto;width:18px;text-align:center;font-size:.95rem;opacity:.85}
+  /* Brand. The wordmark sits on the baseline of the mark rather than centred
+     on it, which is what stops a two-element lockup reading as clip art. */
+  nav.side .brand{display:flex;align-items:center;gap:.6rem;padding:.15rem .3rem 1.1rem;
+    white-space:nowrap}
+  nav.side .brand .mark{flex:0 0 auto;width:26px;height:26px;border-radius:7px;
+    background:var(--accent);color:#fff;display:grid;place-items:center;
+    font-size:.8rem;font-weight:700;letter-spacing:-.02em}
+  nav.side .brand .bname{flex:1 1 auto;font-weight:640;font-size:.95rem;
+    letter-spacing:-.015em;color:var(--ink)}
+  #navtoggle{flex:0 0 auto;background:none;border:0;color:var(--ink3);cursor:pointer;
+    width:26px;height:26px;border-radius:6px;display:grid;place-items:center;padding:0}
+  #navtoggle svg{width:16px;height:16px;transition:transform .15s ease}
+  #navtoggle:hover{background:var(--sunk);color:var(--ink)}
+  :root[data-nav=collapsed] #navtoggle svg{transform:rotate(180deg)}
+
+  /* Group labels are quiet dividers, not headings. */
+  nav.side .grp{font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink3);padding:.95rem .55rem .35rem;white-space:nowrap;font-weight:600}
+  nav.side .grp:first-of-type{padding-top:.15rem}
+
+  nav.side a{display:flex;align-items:center;gap:.65rem;padding:.5rem .55rem;
+    border-radius:7px;color:var(--ink2);text-decoration:none;font-size:.87rem;
+    cursor:pointer;white-space:nowrap;position:relative;
+    transition:background .12s ease,color .12s ease}
+  nav.side a .ico{flex:0 0 auto;width:18px;height:18px;opacity:.72;
+    transition:opacity .12s ease}
   nav.side a .label{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
-  nav.side .grp{font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--ink3);padding:.85rem .5rem .28rem;white-space:nowrap}
-  nav.side .cnt{font-size:.72rem;color:var(--ink3);font-variant-numeric:tabular-nums;
-    flex:0 0 auto}
-  nav.side .fill{flex:1 1 auto}
-  #navtoggle{width:100%;justify-content:flex-start;background:none;border:1px solid var(--rule);
-    color:var(--ink2);border-radius:5px;padding:.4rem .5rem;font-size:.8rem;cursor:pointer;
-    display:flex;align-items:center;gap:.6rem}
-  #navtoggle:hover{background:var(--sunk);color:var(--ink)}
+  nav.side a:hover{background:var(--sunk);color:var(--ink)}
+  nav.side a:hover .ico{opacity:1}
+  nav.side a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
-  /* Collapsed: icons only. Labels are hidden rather than removed so the
+  /* Active: a filled pill with an accent rail, so the current page is obvious
+     at a glance and still obvious when the labels are hidden. */
+  nav.side a.on{background:var(--paper);color:var(--ink);font-weight:600}
+  nav.side a.on .ico{opacity:1;color:var(--accent)}
+  nav.side a.on::before{content:'';position:absolute;left:-.6rem;top:50%;
+    transform:translateY(-50%);width:3px;height:18px;border-radius:0 3px 3px 0;
+    background:var(--accent)}
+
+  /* Counts are data, so they get the tabular figures and a chip, not bare text
+     jammed against the label. */
+  nav.side .cnt{flex:0 0 auto;font-size:.7rem;color:var(--ink3);
+    font-variant-numeric:tabular-nums;background:var(--sunk);border-radius:999px;
+    padding:.05rem .38rem;min-width:1.3rem;text-align:center}
+  nav.side a.on .cnt{background:var(--bar)}
+  nav.side .cnt:empty{display:none}
+  nav.side .fill{flex:1 1 auto;min-height:.8rem}
+
+  .sidefoot{border-top:1px solid var(--rule2);padding-top:.6rem;margin-top:.4rem;
+    display:flex;flex-direction:column;gap:.3rem}
+  .sess{display:flex;align-items:center;gap:.55rem;padding:.4rem .55rem;font-size:.78rem;
+    color:var(--ink2);white-space:nowrap;border-radius:7px}
+  .sess .dot{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--ink3)}
+  .sess.open .dot{background:var(--ok);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
+  .sess.pre .dot,.sess.after .dot{background:var(--warn);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 18%,transparent)}
+  .sess .label{overflow:hidden;text-overflow:ellipsis}
+  #theme{display:flex;align-items:center;gap:.65rem;background:none;border:0;
+    color:var(--ink2);border-radius:7px;padding:.5rem .55rem;font-size:.85rem;
+    cursor:pointer;width:100%;text-align:left;font-family:inherit;
+    transition:background .12s ease,color .12s ease}
+  #theme:hover{background:var(--sunk);color:var(--ink)}
+  #theme:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  #theme .ico{width:18px;height:18px;flex:0 0 auto;opacity:.72}
+  #theme:hover .ico{opacity:1}
+
+  /* Collapsed: an icon rail. Labels are clipped rather than removed so the
      accessible name and the tooltip both survive. */
   :root[data-nav=collapsed] nav.side .label,
   :root[data-nav=collapsed] nav.side .cnt,
   :root[data-nav=collapsed] nav.side .grp,
   :root[data-nav=collapsed] nav.side .bname{
     position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-  :root[data-nav=collapsed] nav.side a{justify-content:center;padding:.5rem 0}
-  :root[data-nav=collapsed] nav.side .grp{padding:.35rem 0 0;height:.5rem}
-  :root[data-nav=collapsed] nav.side .brand{flex-direction:column;gap:.4rem;padding:.3rem 0 .7rem}
-  :root[data-nav=collapsed] .sess{justify-content:center;padding:.35rem 0}
-  :root[data-nav=collapsed] #theme{justify-content:center;padding:.4rem 0}
+  :root[data-nav=collapsed] nav.side a,
+  :root[data-nav=collapsed] #theme{justify-content:center;padding:.55rem 0}
+  :root[data-nav=collapsed] nav.side a.on::before{left:-.6rem}
+  :root[data-nav=collapsed] nav.side .grp{padding:.5rem 0 0;height:1px;
+    border-top:1px solid var(--rule2);margin:.35rem .5rem}
+  :root[data-nav=collapsed] nav.side .brand{flex-direction:column;gap:.5rem;
+    padding:.15rem 0 .9rem}
+  :root[data-nav=collapsed] .sess{justify-content:center;padding:.45rem 0}
 
-  /* main must be a flex child that fills the column, or `height:100%` on a
-     page resolves against an auto-height parent and silently does nothing —
-     which is exactly how the market page ended up 534px tall in an 863px
-     window. It still grows past the viewport when a page is long; .col scrolls. */
   main{padding:1rem 1.25rem;min-width:0;flex:1 1 auto;min-height:0;
     display:flex;flex-direction:column}
   .page{display:none} .page.on{display:block}
@@ -176,7 +202,11 @@
   .ticker .track{display:flex;gap:2.4rem;white-space:nowrap;padding-left:1.25rem;
     animation:slide 70s linear infinite;will-change:transform}
   .ticker:hover .track{animation-play-state:paused}
-  .ticker .item{display:flex;align-items:center;gap:.45rem;font-size:.79rem;color:var(--ink2)}
+  .ticker .item{display:flex;align-items:center;gap:.45rem;font-size:.79rem;
+    color:var(--ink2);text-decoration:none;border:0}
+  .ticker a.item{cursor:pointer}
+  .ticker a.item:hover{color:var(--ink)}
+  .ticker a.item:hover b{text-decoration:underline;text-underline-offset:2px}
   .ticker .item b{color:var(--ink);font-weight:600}
   .ticker .item .arw{font-size:.72rem}
   @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
@@ -223,32 +253,93 @@
     padding:.55rem .75rem;margin:0 0 .7rem;border:1px solid var(--rule2);
     border-radius:6px;background:var(--sunk);font-size:.82rem}
   .sesbar .dot{width:9px;height:9px;border-radius:50%;background:var(--ink3)}
+  .symbolpick{display:flex;align-items:center;gap:.45rem;font-size:.8rem}
+  .symbolpick select{font:inherit;font-size:.82rem;background:var(--paper);color:var(--ink);
+    border:1px solid var(--rule);border-radius:5px;padding:.22rem .45rem;cursor:pointer}
+  .symbolpick select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .sesbar.open .dot{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
   .sesbar.pre .dot,.sesbar.after .dot{background:var(--warn)}
   footer{padding:1rem 1.25rem;color:var(--ink3);font-size:.72rem;border-top:1px solid var(--rule)}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-overview" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/>
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/>
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+    </g>
+    <g id="i-decisions" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v16"/><path d="M6 7h12"/>
+      <path d="M6 7 3 14h6z"/><path d="M18 7l-3 7h6z"/>
+    </g>
+    <g id="i-execution" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 20V7"/><path d="M4 10l3-3 3 3"/>
+      <path d="M17 4v13"/><path d="M20 14l-3 3-3-3"/>
+    </g>
+    <g id="i-research" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.7-4.7"/>
+    </g>
+    <g id="i-agents" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/>
+      <circle cx="19" cy="18" r="2.4"/>
+      <path d="M10.4 6.9 6.6 15.8"/><path d="M13.6 6.9l3.8 8.9"/><path d="M7.4 18h9.2"/>
+    </g>
+    <g id="i-money" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="6" width="18" height="13" rx="2.2"/>
+      <path d="M3 10.5h18"/><circle cx="17" cy="15" r="1.3"/>
+    </g>
+    <g id="i-market" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 15V9"/><rect x="4.6" y="10.5" width="4.8" height="6" rx="1"/>
+      <path d="M17 18v-6"/><rect x="14.6" y="6" width="4.8" height="7.5" rx="1"/>
+    </g>
+    <g id="i-chevron" fill="none" stroke="currentColor" stroke-width="1.8"
+       stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"/></g>
+    <g id="i-sun" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M6.3 6.3 4.8 4.8M19.2 19.2l-1.5-1.5M17.7 6.3l1.5-1.5M4.8 19.2l1.5-1.5"/>
+    </g>
+    <g id="i-moon" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 14.2A8.2 8.2 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2z"/>
+    </g>
+    <g id="i-auto" fill="none" stroke="currentColor" stroke-width="1.6"
+       stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="8.2"/><path d="M12 3.8v16.4" />
+      <path d="M12 3.8a8.2 8.2 0 0 1 0 16.4z" fill="currentColor" stroke="none"/>
+    </g>
+  </defs>
+</svg>
 <div class="app">
 <nav class="side" id="nav">
   <div class="brand">
     <span class="mark">Æ</span>
     <span class="bname">Aegis</span>
-    <button id="navtoggle" title="Collapse the sidebar" aria-expanded="true"><span id="navtoggleico">⟨</span></button>
+    <button id="navtoggle" title="Collapse the sidebar" aria-expanded="true"><svg id="navtoggleico" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></button>
   </div>
 
   <div class="grp">Trading</div>
-  <a data-page="overview" class="on" title="Overview"><span class="ico">▦</span><span class="label">Overview</span></a>
-  <a data-page="decisions" title="Decisions"><span class="ico">◧</span><span class="label">Decisions</span><span class="cnt" id="n-decisions"></span></a>
-  <a data-page="execution" title="Execution"><span class="ico">⇅</span><span class="label">Execution</span><span class="cnt" id="n-orders"></span></a>
+  <a data-page="overview" class="on" title="Overview"><svg class="ico" viewBox="0 0 24 24"><use href="#i-overview"/></svg><span class="label">Overview</span></a>
+  <a data-page="decisions" title="Decisions"><svg class="ico" viewBox="0 0 24 24"><use href="#i-decisions"/></svg><span class="label">Decisions</span><span class="cnt" id="n-decisions"></span></a>
+  <a data-page="execution" title="Execution"><svg class="ico" viewBox="0 0 24 24"><use href="#i-execution"/></svg><span class="label">Execution</span><span class="cnt" id="n-orders"></span></a>
 
   <div class="grp">Thinking</div>
-  <a data-page="research" title="Research"><span class="ico">◍</span><span class="label">Research</span><span class="cnt" id="n-news"></span></a>
-  <a data-page="agents" title="Agents"><span class="ico">⁂</span><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
+  <a data-page="research" title="Research"><svg class="ico" viewBox="0 0 24 24"><use href="#i-research"/></svg><span class="label">Research</span><span class="cnt" id="n-news"></span></a>
+  <a data-page="agents" title="Agents"><svg class="ico" viewBox="0 0 24 24"><use href="#i-agents"/></svg><span class="label">Agents</span><span class="cnt" id="n-signals"></span></a>
 
   <div class="grp">Operations</div>
-  <a data-page="money" title="Money"><span class="ico">▤</span><span class="label">Money</span><span class="cnt" id="n-spend"></span></a>
-  <a data-page="market" title="Market"><span class="ico">◪</span><span class="label">Market</span></a>
+  <a data-page="money" title="Money"><svg class="ico" viewBox="0 0 24 24"><use href="#i-money"/></svg><span class="label">Money</span><span class="cnt" id="n-spend"></span></a>
+  <a data-page="market" title="Market"><svg class="ico" viewBox="0 0 24 24"><use href="#i-market"/></svg><span class="label">Market</span></a>
 
   <div class="fill"></div>
 
@@ -257,7 +348,7 @@
       <span class="dot" id="sessdot"></span><span class="label" id="sesslabel">—</span>
     </div>
     <button id="theme" title="Light / dark / follow the system">
-      <span class="ico" id="themeico">◐</span><span class="label" id="themelabel">System</span>
+      <svg class="ico" id="themeico" viewBox="0 0 24 24"><use href="#i-auto"/></svg><span class="label" id="themelabel">System</span>
     </button>
   </div>
 </nav>
@@ -461,6 +552,10 @@
       <b id="sesbar-label">—</b>
       <span class="muted" id="sesbar-next"></span>
       <span class="spacer" style="flex:1"></span>
+      <label class="symbolpick">
+        <span class="muted">Symbol</span>
+        <select id="symbolsel"></select>
+      </label>
       <span class="mono muted" id="sesbar-clock"></span>
     </div>
     <div class="mkt-grid">
@@ -566,9 +661,9 @@ const THEMES = ['system', 'light', 'dark'];
 function applyTheme(t) {
   if (t === 'system') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
-  const ico = { system: '◐', light: '☀', dark: '☾' };
+  const icon = { system: '#i-auto', light: '#i-sun', dark: '#i-moon' };
   const name = { system: 'System', light: 'Light', dark: 'Dark' };
-  $('themeico').textContent = ico[t];
+  $('themeico').innerHTML = `<use href="${icon[t]}"/>`;
   $('themelabel').textContent = name[t];
   $('theme').title = `Theme: ${name[t]} — click to change`;
   // The chart is a third-party iframe and cannot read our CSS variables, so it
@@ -614,7 +709,8 @@ function applyNav(collapsed) {
   const btn = $('navtoggle');
   btn.setAttribute('aria-expanded', String(!collapsed));
   btn.title = collapsed ? 'Expand the sidebar' : 'Collapse the sidebar';
-  $('navtoggleico').textContent = collapsed ? '⟩' : '⟨';
+  // The chevron is an <svg><use>, and setting textContent on it would replace
+  // the <use> with a text node and render nothing. CSS rotates it instead.
   try { localStorage.setItem('aegis-nav', collapsed ? 'collapsed' : 'open'); } catch { /* private mode */ }
 }
 (function initNav() {
@@ -668,7 +764,10 @@ function renderBalances(s) {
   n('n-orders', (s.orders || []).length);
   n('n-news', (s.news || []).length);
   n('n-signals', (s.signals || []).filter((x) => !x.consumed).length);
-  n('n-spend', cost(s.budget.spent));
+  // Two significant figures at most. The exact number is on the Money page;
+  // a nav chip is for noticing that it moved.
+  const spent = Number(s.budget.spent);
+  n('n-spend', spent === 0 ? '' : spent < 1 ? `$${spent.toFixed(2)}` : `$${spent.toFixed(0)}`);
 }
 
 /**
@@ -695,8 +794,13 @@ function renderTicker(s) {
     const d = Number(n.direction);
     const arrow = d > 0 ? '▲' : d < 0 ? '▼' : '•';
     const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'muted';
-    return `<span class="item"><span class="arw ${cls}">${arrow}</span>` +
-      `<b>${esc(n.symbol)}</b>${esc(String(n.title).slice(0, 96))}</span>`;
+    const inner = `<span class="arw ${cls}">${arrow}</span>` +
+      `<b>${esc(n.symbol)}</b>${esc(String(n.title).slice(0, 96))}`;
+    // A headline you cannot open is decoration. Links only when we have one;
+    // a story with no URL still shows, it just is not clickable.
+    return n.link
+      ? `<a class="item" href="${esc(n.link)}" target="_blank" rel="noreferrer noopener">${inner}</a>`
+      : `<span class="item">${inner}</span>`;
   };
   const half = items.map(one).join('');
   $('tickertrack').innerHTML = half + half;
@@ -922,23 +1026,63 @@ function widget(mountId, script, config) {
   host.appendChild(wrap);
 }
 
+/**
+ * One symbol, one source of truth.
+ *
+ * The chart is a cross-origin iframe: picking a symbol inside it changes the
+ * chart and tells us nothing, so the gauge beside it went on describing the
+ * previous company — a worse failure than no gauge at all, because it looks
+ * authoritative. The chart's own picker is therefore off and this select drives
+ * every widget together.
+ */
+const TV_SYMBOLS = [
+  ['NASDAQ:NVDA', 'NVDA · NVIDIA'], ['NASDAQ:AAPL', 'AAPL · Apple'],
+  ['NASDAQ:MSFT', 'MSFT · Microsoft'], ['NASDAQ:GOOGL', 'GOOGL · Alphabet'],
+  ['NASDAQ:AMZN', 'AMZN · Amazon'], ['NASDAQ:META', 'META · Meta'],
+  ['NASDAQ:AMD', 'AMD · AMD'], ['NASDAQ:TSLA', 'TSLA · Tesla'],
+  ['NASDAQ:AVGO', 'AVGO · Broadcom'], ['NYSE:CRM', 'CRM · Salesforce'],
+  ['NYSE:ORCL', 'ORCL · Oracle'], ['NASDAQ:ADBE', 'ADBE · Adobe'],
+  ['NASDAQ:NFLX', 'NFLX · Netflix'], ['NASDAQ:INTC', 'INTC · Intel'],
+  ['NASDAQ:MU', 'MU · Micron'],
+  ['AMEX:SPY', 'SPY · S&P 500'], ['NASDAQ:QQQ', 'QQQ · Nasdaq 100'],
+];
+
+function currentSymbol() {
+  try { return localStorage.getItem('aegis-symbol') || TV_SYMBOLS[0][0]; }
+  catch { return TV_SYMBOLS[0][0]; }
+}
+
+function initSymbolPicker() {
+  const sel = $('symbolsel');
+  if (!sel || sel.options.length) return;
+  for (const [value, label] of TV_SYMBOLS) {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = label;
+    sel.appendChild(o);
+  }
+  sel.value = currentSymbol();
+  sel.addEventListener('change', () => {
+    try { localStorage.setItem('aegis-symbol', sel.value); } catch { /* private mode */ }
+    buildWidgets();
+  });
+}
+
 function buildWidgets() {
   const theme = resolvedTheme();
   tvBuiltWith = document.documentElement.getAttribute('data-theme') || 'system';
-  const symbol = 'NASDAQ:NVDA';
+  initSymbolPicker();
+  const symbol = currentSymbol();
 
   widget('tvchart', 'advanced-chart', {
     autosize: true, symbol, interval: 'D', timezone: 'America/New_York',
-    theme, style: '1', locale: 'en', allow_symbol_change: true,
+    theme, style: '1', locale: 'en',
+    // Off deliberately: see the note above. The picker in the session bar is
+    // the only way to change symbol, so the gauge cannot fall out of step.
+    allow_symbol_change: false,
     withdateranges: true, details: true, hide_side_toolbar: false,
-    // The indicators the operator asked for, on by default rather than hidden
-    // behind the chart's own menu.
-    studies: [
-      'STD;SMA',
-      'STD;RSI',
-      'STD;MACD',
-      'STD;Volume',
-    ],
+    // No studies are switched on for you. Indicators are a preference, and
+    // deciding someone wants MACD before they have asked is presumptuous —
+    // the chart's own toolbar adds them in two clicks and remembers.
     support_host: 'https://www.tradingview.com',
   });
 
