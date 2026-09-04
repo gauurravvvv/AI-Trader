@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type { Db } from '@aegis/db';
 import { isHalted, setHalt } from '@aegis/risk';
@@ -122,6 +123,9 @@ export class Dashboard {
     };
   }
 
+  /** Fingerprint of the served page, so a stale tab can notice and reload. */
+  private buildId = '';
+
   snapshot(): Record<string, unknown> {
     const db = this.deps.db;
     const q = <T>(sql: string, ...args: unknown[]): T[] => db.prepare(sql).all(...args) as T[];
@@ -211,6 +215,7 @@ export class Dashboard {
           why: d['why'] ?? '',
         };
       }),
+      buildId: this.buildId,
       session: marketSession(new Date()),
       balances: this.balances(),
       performance: this.performance(),
@@ -266,6 +271,11 @@ export class Dashboard {
 
   start(): void {
     const html = readFileSync(join(import.meta.dirname, 'ui.html'), 'utf8');
+    // A fingerprint of the page itself. This dashboard is a long-lived tab fed
+    // by SSE: the data updates forever but the markup only changes on reload,
+    // so after a UI change the open tab keeps rendering the old layout and the
+    // fix looks like it did nothing. The client compares this and reloads once.
+    this.buildId = createHash('sha256').update(html).digest('hex').slice(0, 12);
 
     this.server = createServer((req, res) => {
       const url = req.url ?? '/';

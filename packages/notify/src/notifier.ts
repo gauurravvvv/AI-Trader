@@ -10,7 +10,9 @@ export type NotifyKind =
   | 'RECONCILIATION_BREAK'
   | 'BUDGET_TIER'
   | 'KILL_SWITCH'
-  | 'DAILY_SUMMARY';
+  | 'DAILY_SUMMARY'
+  /** Operational notices: started, stopped, configuration changed. */
+  | 'SYSTEM';
 
 /** These always send individually — never folded into a digest. */
 const NEVER_DIGEST: ReadonlySet<NotifyKind> = new Set([

@@ -223,3 +223,32 @@ describe('balances', () => {
     d.stop();
   });
 });
+
+describe('build fingerprint', () => {
+  it('publishes a fingerprint of the served page', () => {
+    // The tab is long-lived and fed by SSE: the numbers stay current but the
+    // markup is whatever was served when it opened, so a UI change looked like
+    // it had done nothing. The client compares this and reloads once.
+    const d = new Dashboard({
+      db, port: PORT + 3, monthlyBudgetUsd: 100, autonomy: 'SHADOW', venue: 'sim-us',
+    });
+    d.start();
+    const id = d.snapshot()['buildId'];
+    expect(typeof id).toBe('string');
+    expect(String(id)).toHaveLength(12);
+    d.stop();
+  });
+
+  it('is stable across snapshots of the same page', () => {
+    const d = new Dashboard({
+      db, port: PORT + 4, monthlyBudgetUsd: 100, autonomy: 'SHADOW', venue: 'sim-us',
+    });
+    d.start();
+    expect(d.snapshot()['buildId']).toBe(d.snapshot()['buildId']);
+    d.stop();
+  });
+
+  it('is empty before start, rather than a fingerprint of nothing', () => {
+    expect(dash.snapshot()['buildId']).toBe('');
+  });
+});

@@ -942,7 +942,28 @@ function renderSession(s) {
   }
 }
 
+/**
+ * Reload when the page itself changes.
+ *
+ * This tab lives for days: SSE keeps the numbers current but the markup is
+ * whatever was served when it was opened, so every UI change appeared to do
+ * nothing until someone thought to hard-reload. The server fingerprints the
+ * HTML it serves; the first snapshot records it and any later change reloads
+ * once. Guarded by a flag so a flapping server cannot put the page in a loop.
+ */
+let seenBuild = null;
+let reloading = false;
+function checkBuild(s) {
+  const id = s.buildId;
+  if (!id || reloading) return;
+  if (seenBuild === null) { seenBuild = id; return; }
+  if (id === seenBuild) return;
+  reloading = true;
+  location.reload();
+}
+
 function render(s) {
+  checkBuild(s);
   renderBalances(s);
   renderTicker(s);
   renderSession(s);
@@ -1073,10 +1094,19 @@ function render(s) {
      <td class="num">${fmt(r.price)}</td><td class="num">${fmt(r.fee, 4)}</td>
      <td class="mono muted">${when(r.filled_at)}</td></tr>`, 6);
 
-  rows($('signals'), s.signals, (r) =>
-    `<tr><td class="num muted">${r.id}</td><td>${esc(r.signal_type)}</td><td><b>${esc(r.symbol ?? '—')}</b></td>
-     <td class="muted">${esc(r.agent)}</td>
-     <td class="${r.consumed ? 'muted' : 'warnc'}">${r.consumed ? esc(r.consumed_by) : 'pending'}</td></tr>`, 5);
+  // market_regime is ambient state: several agents read it and none consume
+  // it, so "pending" reads as an ever-growing backlog of unprocessed work when
+  // it is nothing of the kind.
+  const AMBIENT = new Set(['market_regime']);
+  rows($('signals'), s.signals, (r) => {
+    const ambient = AMBIENT.has(r.signal_type);
+    const state = r.consumed ? esc(r.consumed_by) : ambient ? 'ambient' : 'pending';
+    const cls = r.consumed || ambient ? 'muted' : 'warnc';
+    return `<tr><td class="num muted">${r.id}</td><td>${esc(r.signal_type)}</td>
+      <td><b>${esc(r.symbol ?? '—')}</b></td>
+      <td class="muted">${esc(r.agent)}</td>
+      <td class="${cls}" ${ambient ? 'title="Read by any agent that needs it, consumed by none"' : ''}>${state}</td></tr>`;
+  }, 5);
 
   rows($('llm'), s.llmCalls, (r) =>
     `<tr><td>${esc(r.agent)}</td><td>${esc(r.model)}</td><td class="num">${Number(r.tokens_in).toLocaleString()}</td>

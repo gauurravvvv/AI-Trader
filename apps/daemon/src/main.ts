@@ -249,9 +249,27 @@ if (smtp) {
     if (ok) log.ok('notifier', `SMTP verified — mail will go to ${notifier.to}`);
   });
 }
-notifier.enqueue({
-  kind: 'DAILY_SUMMARY',
-  subject: `Aegis started — ${autonomy} on ${adapter.venue}`,
+// Once an hour at most. The soak restarts the daemon on every crash and on
+// every code change, and a startup notice per restart produced ten identical
+// mails in half an hour — which trains you to ignore the mailbox that is
+// supposed to tell you a trade happened.
+const lastStart = db
+  .prepare(
+    `SELECT created_at FROM notifications
+      WHERE kind = 'SYSTEM' AND subject LIKE 'Aegis started%'
+      ORDER BY id DESC LIMIT 1`,
+  )
+  .get() as { created_at: string } | undefined;
+const startedRecently =
+  lastStart !== undefined &&
+  Date.now() - Date.parse(`${lastStart.created_at.replace(' ', 'T')}Z`) < 60 * 60 * 1000;
+
+if (startedRecently) {
+  log.event('notifier', 'startup notice suppressed — one was sent within the hour');
+} else {
+  notifier.enqueue({
+    kind: 'SYSTEM',
+    subject: `Aegis started — ${autonomy} on ${adapter.venue}`,
   body: [
     `Aegis is up in ${autonomy} mode against ${adapter.venue}.`,
     '',
@@ -263,8 +281,9 @@ notifier.enqueue({
     autonomy === 'AUTO'
       ? 'Simulated orders WILL be placed. Paper money only.'
       : 'SHADOW mode: decisions are recorded, no orders are placed.',
-  ].join('\n'),
-});
+    ].join('\n'),
+  });
+}
 
 const dashTimer = setInterval(() => {
   dashboard.broadcast('tick', dashboard.snapshot());
