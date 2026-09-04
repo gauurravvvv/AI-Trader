@@ -153,3 +153,31 @@ describe('level filtering', () => {
     expect(seen).toHaveLength(1);
   });
 });
+
+describe('raw vs debug', () => {
+  it('always prints raw — it carries message content, not chatter', () => {
+    const seen: string[] = [];
+    createLogger({ colour: false, sink: (l) => seen.push(l) }).raw('the body of the email');
+    expect(seen).toEqual(['the body of the email']);
+  });
+
+  it('prints debug only when verbose', () => {
+    const quiet: string[] = [];
+    createLogger({ colour: false, sink: (l) => quiet.push(l) }).debug('chatter');
+    expect(quiet).toHaveLength(0);
+
+    const loud: string[] = [];
+    createLogger({ verbose: true, colour: false, sink: (l) => loud.push(l) }).debug('chatter');
+    expect(loud).toEqual(['chatter']);
+  });
+
+  it('delivers a notification body through the default console transport', () => {
+    // Regression: raw was verbose-gated, so ConsoleTransport — the default
+    // notification channel — emitted a subject and dropped the entire body.
+    const seen: string[] = [];
+    const log = createLogger({ colour: false, sink: (l) => seen.push(l) });
+    log.event('notifier', '[email → op] Subject');
+    log.raw('  | SELL 10 NVDA @ 89.00\n  | Reason: STOP_LOSS');
+    expect(seen.join('\n')).toContain('STOP_LOSS');
+  });
+});

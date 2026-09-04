@@ -18,7 +18,10 @@ export interface Logger {
     c: { model: string; tokensIn: number; tokensOut: number; costUsd: string; latencyMs: number },
   ): void;
   budget(spent: string, budget: number, dayOfCycle: number): void;
+  /** Writes text exactly as given. Always printed — this is content, not chatter. */
   raw(text: string): void;
+  /** Verbose-only diagnostic chatter. */
+  debug(text: string): void;
 }
 
 export function createLogger(
@@ -61,7 +64,14 @@ export function createLogger(
     budget: (spent, budget, dayOfCycle) => {
       out(formatBudget({ spent, budget, dayOfCycle, colour: opts.colour }));
     },
+    // Unconditional. Both callers write content that IS the message — the body
+    // of a notification and the performance report — and gating them on
+    // --verbose meant the default console "email" transport delivered a subject
+    // line and silently dropped everything under it.
     raw: (t) => {
+      out(t);
+    },
+    debug: (t) => {
       if (opts.verbose === true) out(t);
     },
   };

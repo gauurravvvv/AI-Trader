@@ -12,3 +12,5 @@ export { NewsScoutAgent, interleave, SIG_NEWS } from './news.js';
 export type { NewsDeps, ScoutedStory } from './news.js';
 export { NewsTraderAgent, gateNewsTrade, DEFAULT_NEWS_RULE } from './news-trader.js';
 export type { NewsTradeRule, NewsGateResult, NewsRejectReason, NewsTraderDeps, Venue } from './news-trader.js';
+export { closedTrades, summarise, maxDrawdown, compareToBenchmark, byConfidence, bySource, performanceReport } from './evaluator.js';
+export type { ClosedTrade, Performance, BenchmarkResult, TierBucket } from './evaluator.js';

@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import type { Db } from '@aegis/db';
 import type { BudgetGovernor } from '@aegis/budget';
 import type { NotifyLike } from './agents.js';
+import { closedTrades, summarise } from './evaluator.js';
 
 export interface DaySummary {
   day: string;
@@ -89,8 +90,29 @@ export function collectSummary(db: Db, venue: string, day: string): DaySummary {
   } satisfies DaySummary;
 }
 
-export function summaryBody(s: DaySummary, tier: string, spent: string, remaining: string): string {
+export function summaryBody(
+  s: DaySummary,
+  tier: string,
+  spent: string,
+  remaining: string,
+  lifetime?: { trades: number; winRate: number; realised: string; maxDrawdown: string },
+): string {
   const pnl = new Decimal(s.realisedPnl);
+  const life =
+    lifetime === undefined || lifetime.trades === 0
+      ? []
+      : [
+          '',
+          'SINCE INCEPTION',
+          `  Closed trades:  ${String(lifetime.trades)}`,
+          `  Win rate:       ${(lifetime.winRate * 100).toFixed(1)}%`,
+          `  Realised:       ${lifetime.realised}`,
+          `  Max drawdown:   ${lifetime.maxDrawdown}`,
+          lifetime.trades < 20
+            ? '  Too few trades to draw a conclusion. Run `pnpm report` for the'
+            : '  Run `pnpm report` for the',
+          '  full breakdown and the comparison against buy-and-hold.',
+        ];
   return [
     `Activity for ${s.day}`,
     '',
@@ -108,6 +130,7 @@ export function summaryBody(s: DaySummary, tier: string, spent: string, remainin
       ? 'No decisions today. That is the expected state on most days: the earnings\n' +
         'calendar is sparse and the SUE gate rejects far more than it passes.'
       : '',
+    ...life,
   ]
     .filter((l) => l !== '')
     .join('\n');
@@ -143,10 +166,16 @@ export class DailySummary {
     // Summarise the day that just ended, not the one a few minutes old.
     const target = this.lastSent === null ? today : today;
     const s = collectSummary(this.db, this.venue, target);
+    const life = summarise(closedTrades(this.db, this.venue));
     this.notify({
       kind: 'DAILY_SUMMARY',
       subject: `Aegis daily: ${String(s.ordersFilled)} fills, P&L ${s.realisedPnl}, ${String(s.openPositions)} open`,
-      body: summaryBody(s, this.budget.tier(), this.budget.spent(), this.budget.remaining()),
+      body: summaryBody(s, this.budget.tier(), this.budget.spent(), this.budget.remaining(), {
+        trades: life.trades,
+        winRate: life.winRate,
+        realised: life.realised,
+        maxDrawdown: life.maxDrawdown,
+      }),
     });
     this.lastSent = today;
     return true;

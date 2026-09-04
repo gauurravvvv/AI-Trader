@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "dev": "node --import tsx apps/daemon/src/main.ts",
-    "smoke:news": "pnpm --filter @aegis/daemon smoke:news"
+    "smoke:news": "pnpm --filter @aegis/daemon smoke:news",
+    "report": "pnpm --filter @aegis/daemon report"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

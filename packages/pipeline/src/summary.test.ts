@@ -138,3 +138,32 @@ describe('DailySummary', () => {
     expect(seen).toHaveLength(1);
   });
 });
+
+describe('lifetime performance in the daily summary', () => {
+  it('omits the section entirely before anything has closed', () => {
+    const s = collectSummary(db, VENUE, DAY);
+    const body = summaryBody(s, 'NORMAL', '0', '100', {
+      trades: 0, winRate: 0, realised: '0.00', maxDrawdown: '0.00',
+    });
+    expect(body).not.toContain('SINCE INCEPTION');
+  });
+
+  it('reports lifetime figures once trades have closed', () => {
+    const s = collectSummary(db, VENUE, DAY);
+    const body = summaryBody(s, 'NORMAL', '0', '100', {
+      trades: 6, winRate: 0.5, realised: '120.00', maxDrawdown: '45.00',
+    });
+    expect(body).toContain('SINCE INCEPTION');
+    expect(body).toContain('50.0%');
+    expect(body).toContain('45.00');
+    expect(body).toContain('Too few trades to draw a conclusion');
+  });
+
+  it('stops disclaiming once the sample is large enough to mean something', () => {
+    const body = summaryBody(collectSummary(db, VENUE, DAY), 'NORMAL', '0', '100', {
+      trades: 40, winRate: 0.55, realised: '900.00', maxDrawdown: '120.00',
+    });
+    expect(body).not.toContain('Too few trades');
+    expect(body).toContain('buy-and-hold');
+  });
+});
