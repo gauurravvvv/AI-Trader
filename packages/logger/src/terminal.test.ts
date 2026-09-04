@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { formatLine, formatLlm, formatBudget, formatCost } from './terminal.js';
+import { createLogger } from './index.js';
 
 const at = new Date('2026-09-03T14:32:07Z');
 const ESC = String.fromCharCode(27);
@@ -95,5 +96,41 @@ describe('formatBudget', () => {
     expect(s).toContain('$100');
     expect(s).toContain('19%');
     expect(s).toContain('11 days');
+  });
+});
+
+describe('level filtering', () => {
+  it('suppresses info-level lines at level=warn', () => {
+    const seen: string[] = [];
+    const log = createLogger({ level: 'warn', colour: false, sink: (l) => seen.push(l) });
+    log.event('a', 'routine');
+    log.ok('a', 'fine');
+    log.warn('a', 'careful');
+    log.error('a', 'broken');
+    expect(seen).toHaveLength(2);
+    expect(seen.join()).toContain('careful');
+    expect(seen.join()).toContain('broken');
+    expect(seen.join()).not.toContain('routine');
+  });
+
+  it('shows everything at level=info (the default)', () => {
+    const seen: string[] = [];
+    const log = createLogger({ colour: false, sink: (l) => seen.push(l) });
+    log.event('a', 'x'); log.warn('a', 'y'); log.error('a', 'z');
+    expect(seen).toHaveLength(3);
+  });
+
+  it('suppresses all but errors at level=error', () => {
+    const seen: string[] = [];
+    const log = createLogger({ level: 'error', colour: false, sink: (l) => seen.push(l) });
+    log.event('a', 'x'); log.warn('a', 'y'); log.error('a', 'z');
+    expect(seen).toHaveLength(1);
+  });
+
+  it('never suppresses an LLM cost line below warn — spend must stay visible', () => {
+    const seen: string[] = [];
+    const log = createLogger({ level: 'info', colour: false, sink: (l) => seen.push(l) });
+    log.llm('a', { model: 'haiku', tokensIn: 1, tokensOut: 1, costUsd: '0.01', latencyMs: 1 });
+    expect(seen).toHaveLength(1);
   });
 });

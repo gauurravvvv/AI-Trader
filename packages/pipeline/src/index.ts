@@ -1,8 +1,10 @@
 export { auditDecision, tierFor, AuditSchema } from './auditor.js';
 export type { Audit, AuditResult, AuditTier, AuditOutcome, AuditDeps } from './auditor.js';
 export { EdgarPollerAgent, EarningsReaderAgent } from './agents.js';
-export type { PipelineDeps } from './agents.js';
+export type { PipelineDeps, NotifyLike } from './agents.js';
 export { universeFor, edgarWatchable, US_UNIVERSE, CRYPTO_UNIVERSE, IN_UNIVERSE } from './universe.js';
 export type { UniverseEntry } from './universe.js';
-export { PositionGuardianAgent, evaluateExit, DRIFT_EXIT } from './guardian.js';
+export { PositionGuardianAgent, evaluateExit, pnlPct, DRIFT_EXIT } from './guardian.js';
 export type { ExitRule, ExitReason, ExitDecision } from './guardian.js';
+export { DailySummary, collectSummary, summaryBody } from './summary.js';
+export type { DaySummary } from './summary.js';

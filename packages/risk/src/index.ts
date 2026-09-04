@@ -3,4 +3,4 @@ export type {
   RiskLimits, RiskContext, ProposedOrder, RiskCheck, RiskEvaluation, RejectCode,
 } from './officer.js';
 export { OrderRouter, isHalted, setHalt } from './router.js';
-export type { RouteRequest, RouteOutcome, RouterDeps } from './router.js';
+export type { RouteRequest, RouteOutcome, RouterDeps, RouterNotify } from './router.js';

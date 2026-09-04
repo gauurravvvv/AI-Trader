@@ -37,6 +37,12 @@
     },
     {
       "path": "../ledger"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../brokers"
     }
   ]
 }

@@ -10,11 +10,12 @@ import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
 import { EdgarClient } from '@aegis/edgar';
 import { Dashboard } from '@aegis/dashboard';
-import { Notifier, ConsoleTransport, fillBody } from '@aegis/notify';
+import { Notifier, ConsoleTransport, fillBody, type NotifyHook } from '@aegis/notify';
 import {
   EdgarPollerAgent,
   EarningsReaderAgent,
   PositionGuardianAgent,
+  DailySummary,
   universeFor,
   type PipelineDeps,
 } from '@aegis/pipeline';
@@ -29,6 +30,7 @@ const agentFilter = argAt('--agent');
 const autonomy = (argAt('--autonomy') ?? process.env.AUTONOMY ?? 'SHADOW') as 'SHADOW' | 'AUTO';
 
 const log = createLogger({
+  level: cfg.logLevel,
   verbose: cfg.verbose || process.argv.includes('--verbose'),
   ...(agentFilter !== undefined ? { agentFilter } : {}),
 });
@@ -36,14 +38,22 @@ const log = createLogger({
 const db = openDb(cfg.dbPath);
 const bus = new SignalBus(db);
 const cycleStart = `${new Date().toISOString().slice(0, 7)}-01`;
-const budget = new BudgetGovernor(db, cfg.monthlyBudgetUsd, cycleStart);
+
+// The Budget Governor needs to raise notifications, but the Notifier needs a
+// database and a logger that exist by the time it is built. Rather than reorder
+// construction around one edge, notifications raised before the outbox exists
+// are dropped into a no-op and the hook is swapped in below.
+let raise: NotifyHook = () => undefined;
+const budget = new BudgetGovernor(db, cfg.monthlyBudgetUsd, cycleStart, (n) => {
+  raise(n);
+});
 setConcurrency(cfg.claudeConcurrency);
 
 // ── Market data and venue. Both keyless: no signup, no API key. ──
 const prices = new YahooPriceSource();
 const consensus = new YahooConsensus();
 const adapter = new SimAdapter(
-  'alpaca-paper',
+  'sim-us',
   'US',
   prices,
   US_COSTS,
@@ -64,11 +74,15 @@ const notifier = new Notifier({
   to: process.env.NOTIFY_TO ?? 'operator@localhost',
 });
 const stopNotifier = notifier.start(15_000);
+raise = (n) => {
+  notifier.enqueue(n);
+};
 
 const router = new OrderRouter({
   db,
   adapter,
   ledger,
+  notify: raise,
   onFill: (f) => {
     log.ok('execution', `FILLED ${f.side} ${f.qty} ${f.symbol} @ ${Number(f.price).toFixed(2)}`);
     notifier.enqueue({
@@ -108,7 +122,12 @@ const pipelineDeps: PipelineDeps = {
   sueThreshold: cfg.sueThreshold,
   auditFloor: cfg.auditFloor,
   autonomy,
+  notify: raise,
 };
+
+// One summary per calendar day, idempotent on the day rather than on a timer,
+// so a restart cannot produce a second one.
+const daily = new DailySummary(db, budget, adapter.venue, raise);
 
 const orchestrator = new Orchestrator(log);
 orchestrator.register(new EdgarPollerAgent(pipelineDeps), 0);
@@ -162,6 +181,7 @@ const dashTimer = setInterval(() => {
 
 const reportBudget = (): void => {
   log.budget(budget.spent(), cfg.monthlyBudgetUsd, new Date().getDate());
+  if (daily.maybeSend()) log.event('notifier', 'daily summary queued');
 };
 reportBudget();
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askClaude, parseModelJson, ClaudeError, type ModelId } from '@aegis/claude';
+import { askClaude, parseModelJson, ClaudeError, type ModelId, type AskFn } from '@aegis/claude';
 import type { BudgetGovernor } from '@aegis/budget';
 import type { Logger } from '@aegis/logger';
 import type { VerifiedEarningsRead } from '@aegis/alpha';
@@ -94,6 +94,8 @@ export interface AuditDeps {
   budget: BudgetGovernor;
   log: Logger;
   floor?: number;
+  /** Defaults to the real Claude CLI. Overridden in tests. */
+  ask?: AskFn;
 }
 
 export type AuditOutcome =
@@ -120,7 +122,7 @@ export async function auditDecision(
 
   let result;
   try {
-    result = await askClaude(buildPrompt(symbol, read, score, numericSue), {
+    result = await (deps.ask ?? askClaude)(buildPrompt(symbol, read, score, numericSue), {
       model: 'sonnet',
       agent,
     });

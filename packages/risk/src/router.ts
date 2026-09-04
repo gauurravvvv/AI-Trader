@@ -21,12 +21,38 @@ export type RouteOutcome =
   | { ok: true; orderId: number; venueOrderId: string; qty: string; resized: boolean }
   | { ok: false; reason: string; evaluation: RiskEvaluation };
 
+/**
+ * Raised when an order is sent or refused.
+ *
+ * Structurally typed rather than importing `@aegis/notify`: the router should
+ * not need to know an email system exists in order to report a breach, and a
+ * test can satisfy it with `(n) => seen.push(n)`.
+ */
+export interface RouterNotify {
+  (n: { kind: 'ORDER_SUBMITTED' | 'RISK_BREACH'; subject: string; body: string }): void;
+}
+
+/**
+ * Reject codes that mean a limit was actually breached, as opposed to an order
+ * merely being too large. A resize is routine and not worth an alert; a halt,
+ * a blocklisted symbol or a tripped daily loss stop is the operator's business.
+ */
+const BREACH_CODES: ReadonlySet<string> = new Set([
+  'HALTED',
+  'BLOCKLIST',
+  'DAILY_LOSS_STOP',
+  'MAX_POSITIONS',
+  'DUPLICATE',
+  'NO_QUOTE',
+]);
+
 export interface RouterDeps {
   db: Db;
   adapter: BrokerAdapter;
   ledger: Ledger;
   limits?: RiskLimits;
   onFill?: (f: FillEvent) => void;
+  notify?: RouterNotify;
 }
 
 /** Read the global kill switch. Checked immediately before every send. */
@@ -172,6 +198,19 @@ export class OrderRouter {
       this.db
         .prepare(`UPDATE decisions SET status = 'REJECTED', reject_reason = ? WHERE id = ?`)
         .run(evaluation.rejectReasons.join(','), req.decisionId);
+      const breaches = evaluation.rejectReasons.filter((c) => BREACH_CODES.has(c));
+      if (breaches.length > 0) {
+        this.deps.notify?.({
+          kind: 'RISK_BREACH',
+          subject: `Aegis: ${req.symbol} ${req.side.toUpperCase()} blocked — ${breaches.join(', ')}`,
+          body: [
+            `${req.side.toUpperCase()} ${req.qty} ${req.symbol} was refused by the Risk Officer.`,
+            '',
+            'Failed checks:',
+            ...evaluation.checks.filter((c) => !c.passed).map((c) => `  • ${c.name}: ${c.detail}`),
+          ].join('\n'),
+        });
+      }
       return { ok: false, reason: evaluation.rejectReasons.join(','), evaluation };
     }
 
@@ -207,6 +246,21 @@ export class OrderRouter {
     this.db
       .prepare(`UPDATE decisions SET status = 'EXECUTED' WHERE id = ?`)
       .run(req.decisionId);
+
+    this.deps.notify?.({
+      kind: 'ORDER_SUBMITTED',
+      subject: `Aegis: ${req.side.toUpperCase()} ${qty} ${req.symbol} submitted`,
+      body: [
+        `${req.side.toUpperCase()} ${qty} ${req.symbol} @ ~${Number(req.price).toFixed(2)}`,
+        `Venue:    ${this.adapter.venue}`,
+        `Order:    ${clientOrderId} → ${venueOrder.venueOrderId}`,
+        resized ? `Resized:  from ${req.qty} to ${qty} by the Risk Officer` : '',
+        '',
+        'A separate notification follows when the venue reports the fill.',
+      ]
+        .filter((l) => l !== '')
+        .join('\n'),
+    });
 
     return { ok: true, orderId, venueOrderId: venueOrder.venueOrderId, qty, resized };
   }

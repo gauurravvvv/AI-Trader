@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askClaude, parseModelJson, ClaudeError, type ModelId } from '@aegis/claude';
+import { askClaude, parseModelJson, ClaudeError, type ModelId, type AskFn } from '@aegis/claude';
 import type { BudgetGovernor } from '@aegis/budget';
 import type { Logger } from '@aegis/logger';
 
@@ -76,6 +76,8 @@ export interface ReaderDeps {
   budget: BudgetGovernor;
   log: Logger;
   agentName?: string;
+  /** Defaults to the real Claude CLI. Overridden in tests. */
+  ask?: AskFn;
 }
 
 export type ReadOutcome =
@@ -137,7 +139,7 @@ export async function readEarnings(
 
   let result;
   try {
-    result = await askClaude(PROMPT + filingText, {
+    result = await (deps.ask ?? askClaude)(PROMPT + filingText, {
       model,
       agent,
       ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),

@@ -1,5 +1,13 @@
 import { formatLine, formatLlm, formatBudget, type Kind } from './terminal.js';
 
+export type Level = 'debug' | 'info' | 'warn' | 'error';
+
+/** Which kinds survive at each level. */
+const RANK: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+const KIND_RANK: Record<Kind, number> = {
+  event: 1, ok: 1, llm: 1, warn: 2, error: 3,
+};
+
 export interface Logger {
   event(agent: string, msg: string): void;
   ok(agent: string, msg: string): void;
@@ -15,21 +23,24 @@ export interface Logger {
 
 export function createLogger(
   opts: {
+    level?: Level;
     verbose?: boolean;
     agentFilter?: string;
     colour?: boolean;
     sink?: (line: string) => void;
   } = {},
 ): Logger {
+  const minRank = RANK[opts.level ?? 'info'];
   const out =
     opts.sink ??
     ((l: string): void => {
       process.stdout.write(l + '\n');
     });
-  const pass = (agent: string): boolean =>
-    opts.agentFilter === undefined || agent === opts.agentFilter;
+  const pass = (agent: string, kind: Kind): boolean =>
+    (opts.agentFilter === undefined || agent === opts.agentFilter) &&
+    KIND_RANK[kind] >= minRank;
   const line = (agent: string, kind: Kind, msg: string): void => {
-    if (pass(agent)) out(formatLine({ at: new Date(), agent, kind, msg, colour: opts.colour }));
+    if (pass(agent, kind)) out(formatLine({ at: new Date(), agent, kind, msg, colour: opts.colour }));
   };
   return {
     event: (a, m) => {
@@ -45,7 +56,7 @@ export function createLogger(
       line(a, 'error', m);
     },
     llm: (a, c) => {
-      if (pass(a)) out(formatLlm({ at: new Date(), agent: a, ...c, colour: opts.colour }));
+      if (pass(a, 'llm')) out(formatLlm({ at: new Date(), agent: a, ...c, colour: opts.colour }));
     },
     budget: (spent, budget, dayOfCycle) => {
       out(formatBudget({ spent, budget, dayOfCycle, colour: opts.colour }));

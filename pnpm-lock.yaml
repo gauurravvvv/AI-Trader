@@ -205,6 +205,9 @@ importers:
       '@aegis/alpha':
         specifier: workspace:*
         version: link:../alpha
+      '@aegis/brokers':
+        specifier: workspace:*
+        version: link:../brokers
       '@aegis/budget':
         specifier: workspace:*
         version: link:../budget
@@ -214,6 +217,9 @@ importers:
       '@aegis/config':
         specifier: workspace:*
         version: link:../config
+      '@aegis/db':
+        specifier: workspace:*
+        version: link:../db
       '@aegis/edgar':
         specifier: workspace:*
         version: link:../edgar

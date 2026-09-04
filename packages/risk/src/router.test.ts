@@ -182,3 +182,74 @@ describe('kill switch', () => {
     expect(isHalted(d)).toBe(false);
   });
 });
+
+describe('notifications', () => {
+  interface Note { kind: string; subject: string; body: string }
+
+  function withNotify(): { notes: Note[]; r: OrderRouter } {
+    const notes: Note[] = [];
+    const r = new OrderRouter({ db, adapter, ledger, notify: (n) => notes.push(n) });
+    r.start();
+    return { notes, r };
+  }
+
+  it('raises ORDER_SUBMITTED when an order reaches the venue', async () => {
+    const { notes, r } = withNotify();
+    await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    const sub = notes.find((n) => n.kind === 'ORDER_SUBMITTED');
+    expect(sub).toBeDefined();
+    expect(sub!.subject).toContain('BUY 20 NVDA');
+  });
+
+  it('says so in the body when the Risk Officer shrank the order', async () => {
+    const { notes, r } = withNotify();
+    await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '5000', price: '100', allowResize: true },
+      '1000000',
+    );
+    expect(notes.find((n) => n.kind === 'ORDER_SUBMITTED')!.body).toContain('Resized');
+  });
+
+  it('raises RISK_BREACH on a halt, listing the failed checks', async () => {
+    const { notes, r } = withNotify();
+    setHalt(db, true, 'drill');
+    await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    const b = notes.find((n) => n.kind === 'RISK_BREACH');
+    expect(b).toBeDefined();
+    expect(b!.subject).toContain('HALTED');
+    expect(b!.body).toContain('halt');
+  });
+
+  it('stays quiet when an order was merely too big — a resize is not a breach', async () => {
+    const { notes, r } = withNotify();
+    await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '5000', price: '100' },
+      '1000000',
+    );
+    expect(notes.filter((n) => n.kind === 'RISK_BREACH')).toHaveLength(0);
+  });
+
+  it('never notifies twice for an idempotent replay', async () => {
+    const { notes, r } = withNotify();
+    const req = { decisionId: newDecision(), symbol: 'NVDA', side: 'buy' as const, qty: '20', price: '100' };
+    await r.route(req, '1000000');
+    await r.route(req, '1000000');
+    expect(notes.filter((n) => n.kind === 'ORDER_SUBMITTED')).toHaveLength(1);
+  });
+
+  it('works with no hook at all — notification is optional, trading is not', async () => {
+    const r = new OrderRouter({ db, adapter, ledger });
+    r.start();
+    const out = await r.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    expect(out.ok).toBe(true);
+  });
+});

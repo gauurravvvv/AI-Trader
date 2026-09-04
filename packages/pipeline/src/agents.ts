@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { BaseAgent, type AgentDeps } from '@aegis/agents';
+import type { AskFn } from '@aegis/claude';
 import type { EdgarClient } from '@aegis/edgar';
 import { trimFiling } from '@aegis/edgar';
 import type { YahooConsensus, YahooPriceSource } from '@aegis/marketdata';
@@ -19,7 +20,20 @@ export interface PipelineDeps extends AgentDeps {
   auditFloor: number;
   /** SHADOW logs the decision and places nothing. */
   autonomy: 'SHADOW' | 'AUTO';
+  /** Defaults to the real Claude CLI. Overridden in tests. */
+  ask?: AskFn;
+  /** Optional. Structurally typed so the pipeline need not import @aegis/notify. */
+  notify?: (n: { kind: NotifyLike; subject: string; body: string }) => void;
 }
+
+export type NotifyLike =
+  | 'ORDER_SUBMITTED'
+  | 'ORDER_FILLED'
+  | 'ORDER_REJECTED'
+  | 'POSITION_EXITED'
+  | 'RISK_BREACH'
+  | 'BUDGET_TIER'
+  | 'DAILY_SUMMARY';
 
 const SIG_FILING = 'filing_8k';
 const SIG_SCORED = 'earnings_scored';
@@ -120,7 +134,11 @@ export class EarningsReaderAgent extends BaseAgent {
         this.log.warn('consensus', `${symbol}: no consensus history`);
       }
 
-      const out = await readEarnings(text, { budget: this.budget, log: this.log });
+      const out = await readEarnings(text, {
+        budget: this.budget,
+        log: this.log,
+        ...(this.p.ask ? { ask: this.p.ask } : {}),
+      });
       if (!out.ok) {
         this.log.warn(this.name, `${symbol}: read failed (${out.stage}) ${out.reason}`);
         continue;
@@ -147,6 +165,7 @@ export class EarningsReaderAgent extends BaseAgent {
         budget: this.budget,
         log: this.log,
         floor: this.p.auditFloor,
+        ...(this.p.ask ? { ask: this.p.ask } : {}),
       });
       if (!audit.ok) {
         // Fail closed: an audit we could not complete is not an audit that passed.
@@ -172,7 +191,7 @@ export class EarningsReaderAgent extends BaseAgent {
         data: { sue: score.sue, audit: a.total, tier: a.tier, why: read.oneLineWhy },
       });
 
-      await this.propose(symbol, score.sue, a.total, a.tier, read.oneLineWhy);
+      await this.propose(symbol, score.sue, a.total, a.tier, read.oneLineWhy, sig.id);
     }
   }
 
@@ -182,6 +201,8 @@ export class EarningsReaderAgent extends BaseAgent {
     auditScore: number,
     tier: string,
     why: string,
+    /** INV-2: every decision traces back to the filing signal that caused it. */
+    sourceSignalId: number,
   ): Promise<void> {
     const quote = await this.p.prices.quote(symbol);
     if (!quote) {
@@ -191,8 +212,9 @@ export class EarningsReaderAgent extends BaseAgent {
 
     const ins = this.db
       .prepare(
-        `INSERT INTO decisions (symbol, market, venue, side, sue_score, audit_score, audit_tier, rationale, thesis_break, status)
-         VALUES (?,?,?,?,?,?,?,?,?, 'APPROVED')`,
+        `INSERT INTO decisions (symbol, market, venue, side, sue_score, audit_score, audit_tier,
+                                rationale, thesis_break, source_signal_id, status)
+         VALUES (?,?,?,?,?,?,?,?,?,?, 'APPROVED')`,
       )
       .run(
         symbol,
@@ -208,6 +230,7 @@ export class EarningsReaderAgent extends BaseAgent {
           'price closes below the entry stop',
           'a restatement or auditor change is disclosed',
         ]),
+        sourceSignalId,
       );
     const decisionId = Number(ins.lastInsertRowid);
 

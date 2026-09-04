@@ -35,15 +35,41 @@ const ALLOWED: Record<Tier, ReadonlySet<CallKind>> = {
   RULES_ONLY: new Set(),
 };
 
+/**
+ * Raised when the tier changes. Structurally typed so `@aegis/budget` need not
+ * import `@aegis/notify`.
+ */
+export interface BudgetNotify {
+  (n: { kind: 'BUDGET_TIER'; subject: string; body: string }): void;
+}
+
+/** What stops working at each tier, in the operator's terms. */
+const TIER_MEANING: Record<Tier, string> = {
+  NORMAL: 'All agents are running normally.',
+  CONSERVE:
+    'Discretionary research is paused. New entries and position protection continue.',
+  ESSENTIAL:
+    'New entries are paused. Only position-protecting calls are permitted — the system can still exit, but it will not open anything new.',
+  RULES_ONLY:
+    'No model calls at all. Exits, stops and the kill switch still work: they are deterministic code and never needed the model.',
+};
+
 export class BudgetGovernor {
+  /** Last tier we announced, so a transition fires exactly once. */
+  private announced: Tier;
+
   constructor(
     private readonly db: Db,
     private readonly budgetUsd: number,
     private readonly cycleStart: string,
+    private readonly notify?: BudgetNotify,
   ) {
     this.db
       .prepare('INSERT OR IGNORE INTO budget_cycles (cycle_start, budget_usd) VALUES (?, ?)')
       .run(cycleStart, String(budgetUsd));
+    // Seeded from the persisted spend, so a restart mid-cycle does not re-announce
+    // a tier the operator was already told about.
+    this.announced = this.tierFor(this.spent());
   }
 
   record(call: LlmCallRecord): void {
@@ -74,6 +100,30 @@ export class BudgetGovernor {
         )
         .run(next, this.tierFor(next), this.cycleStart);
     })();
+    this.announceTier();
+  }
+
+  /**
+   * Fire once per transition, in either direction. A cycle rollover that
+   * restores NORMAL is as worth knowing as the degradation that preceded it.
+   */
+  private announceTier(): void {
+    const now = this.tier();
+    if (now === this.announced) return;
+    const from = this.announced;
+    this.announced = now;
+    const pct = (this.fraction() * 100).toFixed(1);
+    this.notify?.({
+      kind: 'BUDGET_TIER',
+      subject: `Aegis: budget tier ${from} → ${now} (${pct}% of $${String(this.budgetUsd)} spent)`,
+      body: [
+        `Spent:      $${this.spent()} of $${String(this.budgetUsd)} (${pct}%)`,
+        `Remaining:  $${this.remaining()}`,
+        '',
+        `Tier is now ${now}.`,
+        TIER_MEANING[now],
+      ].join('\n'),
+    });
   }
 
   spent(): string {

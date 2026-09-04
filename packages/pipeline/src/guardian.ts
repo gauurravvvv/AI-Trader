@@ -102,6 +102,35 @@ export function evaluateExit(
   };
 }
 
+/** Signed percentage move from entry, formatted for a subject line. */
+export function pnlPct(entry: string, exit: string): string {
+  const e = new Decimal(entry);
+  if (e.lte(0)) return 'n/a';
+  const pct = new Decimal(exit).minus(e).div(e).times(100);
+  return `${pct.gte(0) ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
+function exitBody(
+  pos: { symbol: string; qty: string; avg_cost: string; opened_at: string | null },
+  price: string,
+  reason: ExitReason,
+  detail: string,
+): string {
+  const gross = new Decimal(price).minus(pos.avg_cost).times(pos.qty);
+  return [
+    `SELL ${pos.qty} ${pos.symbol} @ ~${Number(price).toFixed(2)}`,
+    `Entry:     ${Number(pos.avg_cost).toFixed(2)}`,
+    `Move:      ${pnlPct(pos.avg_cost, price)}`,
+    `Gross P&L: ${gross.toFixed(2)} (before fees; the fill notification carries the net)`,
+    `Opened:    ${pos.opened_at ?? 'unknown'}`,
+    '',
+    `Reason:    ${reason}`,
+    detail === '' ? '' : `Detail:    ${detail}`,
+  ]
+    .filter((l) => l !== '')
+    .join('\n');
+}
+
 interface PosRow {
   symbol: string;
   qty: string;
@@ -160,11 +189,16 @@ export class PositionGuardianAgent extends BaseAgent {
       }
 
       this.log.warn(this.name, `${pos.symbol}  ${d.reason ?? ''}  ${d.detail} — exiting`);
-      await this.close(pos, quote.last, d.reason ?? 'STOP_LOSS');
+      await this.close(pos, quote.last, d.reason ?? 'STOP_LOSS', d.detail);
     }
   }
 
-  private async close(pos: PosRow, price: string, reason: ExitReason): Promise<void> {
+  private async close(
+    pos: PosRow,
+    price: string,
+    reason: ExitReason,
+    detail = '',
+  ): Promise<void> {
     const ins = this.db
       .prepare(
         `INSERT INTO decisions (symbol, market, venue, side, rationale, status)
@@ -181,8 +215,20 @@ export class PositionGuardianAgent extends BaseAgent {
     if (res.ok) {
       this.log.ok('order-router', `${pos.symbol} SELL ${pos.qty} — ${reason}`);
       this.highWater.delete(pos.symbol);
+      this.p.notify?.({
+        kind: 'POSITION_EXITED',
+        subject: `Aegis: exited ${pos.symbol} — ${reason} (${pnlPct(pos.avg_cost, price)})`,
+        body: exitBody(pos, price, reason, detail),
+      });
     } else {
       this.log.error('order-router', `${pos.symbol} exit REJECTED: ${res.reason}`);
+      this.p.notify?.({
+        kind: 'ORDER_REJECTED',
+        subject: `Aegis: EXIT REFUSED for ${pos.symbol} — ${res.reason}`,
+        body:
+          `An exit for ${pos.qty} ${pos.symbol} (${reason}) was refused: ${res.reason}.\n` +
+          'The position is still open and still at risk. This needs a human.',
+      });
     }
   }
 }

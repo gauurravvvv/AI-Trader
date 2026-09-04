@@ -8,6 +8,15 @@ export interface AskOpts {
   timeoutMs?: number;
 }
 
+/**
+ * The shape of `askClaude`, so callers can substitute one.
+ *
+ * The pipeline's end-to-end behaviour — gate ordering, signal consumption,
+ * lineage, sizing — is worth testing on every commit, and none of it should
+ * require a subprocess, a network, or a cent of metered credit to exercise.
+ */
+export type AskFn = (prompt: string, opts: AskOpts) => Promise<ClaudeResult>;
+
 export interface ClaudeResult {
   /**
    * The model that actually produced this result. Carried on the result so the
