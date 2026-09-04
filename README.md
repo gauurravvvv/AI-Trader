@@ -19,9 +19,10 @@ already installed on your machine.
 > does not manage money, and nothing here claims these agents are profitable. See
 > [what this can and cannot promise](#what-this-can-and-cannot-promise).
 
-**Status:** running. 15 packages, ~7.9k lines of source, 408 tests. Six agents
-across two simulated venues. What is not built is listed
-[below](#what-is-not-built), not hidden.
+**Status:** running. 15 packages, ~10k lines of source, 567 tests. Eleven agents
+across three simulated venues. Every phase of the roadmap is built except the
+30-day soak, which is wall-clock and cannot be compressed. What is still missing
+is listed [below](#what-is-not-built), not hidden.
 
 ---
 
@@ -41,15 +42,35 @@ pnpm dev -- --autonomy AUTO   # places simulated orders
 Then open <http://localhost:3777>.
 
 ```bash
-pnpm report        # did any of this beat buy-and-hold?
+pnpm report        # did any of this beat buy-and-hold, or a coin flip?
 pnpm smoke:news    # one live news sweep: real feed, real model, no orders
-pnpm test          # 408 tests
+pnpm smoke:cost    # prove what a model call costs on your machine
+pnpm test          # 567 tests
 pnpm typecheck
 ```
 
 **Start in SHADOW.** It runs the entire pipeline — filings, consensus, scoring,
 audit, risk — and stops at the last step. Watch a few decisions you would have
 disagreed with before letting it place anything.
+
+### The soak
+
+The last roadmap phase is 30 days of unattended running, and it is the only one
+that cannot be written faster.
+
+```bash
+pnpm soak                          # 30 days, SHADOW, restarts on crash
+pnpm soak -- --autonomy AUTO       # places simulated orders
+pnpm soak -- --days 7              # shorter window
+
+tail -f .soak/soak.log             # watch it
+kill "$(cat .soak/soak.pid)"       # stop it, daemon included
+pnpm report                        # the verdict
+```
+
+Budget it before you start: at the default 20-minute news cadence this is
+roughly **$1–2 of metered credit per day**, so a full 30-day run is a
+meaningful share of a $100 monthly pool. `NEWS_INTERVAL_MIN` is the dial.
 
 Useful flags: `--verbose` (adds debug chatter), `--agent <name>` (filter the log to
 one agent), `LOG_LEVEL=warn` (quiet), `DASHBOARD_PORT`, `STARTING_CASH`.
@@ -108,47 +129,70 @@ Estimating understated the real bill by more than two orders of magnitude.
 ## The system as built
 
 ```
-  EDGAR 8-K (Item 2.02)          Yahoo news search
-          │                              │
-   edgar-poller                     news-scout ── haiku, one batched call
-          │  filing_8k                   │  news_signal
-          ▼                              ▼
-   earnings-reader                  news-trader
-   · Yahoo consensus → SUE          · already-priced?  · contradicted?
-   · sonnet reads the exhibit       · category tradeable?
-   · surprise-scorer                (no model — triage already paid for it)
+  EDGAR 8-K (Item 2.02)              Yahoo news search
+          │                                  │
+   edgar-poller                         news-scout ── haiku, one batched call
+          │  filing_8k                       │  news_signal
+          ▼                                  ▼
+   earnings-reader                      news-trader
+   · Yahoo consensus → SUE              · already-priced?  · contradicted?
+   · sonnet reads the exhibit           · category tradeable?
+   · surprise-scorer                    (no model — triage already paid for it)
    · thesis-auditor ── below floor? STOP
-          │                              │
-          └──────────────┬───────────────┘
-  ══════════════════════ LLM boundary ══════════════════════
-                         ▼
-              RISK OFFICER (12 gates, pure code) ── breach? REJECT
-                         ▼
-                    Order Router  ── idempotent on (decision, rung)
-                         ▼
-         SimAdapter ─ sim-us (US hours) · sim-crypto (24/7)
-                         ▼
-       Ledger · guardian:sim-us · guardian:sim-crypto
-                         ▼
-        Notifier (outbox) · Dashboard (SSE) · Evaluator
+          │                                  │
+          └────────────────┬─────────────────┘
+                           ▼
+              execution-planner ── rungs sized by conviction
+  ════════════════════════ LLM boundary ════════════════════════
+                           ▼
+            RISK OFFICER (13 gates, pure code) ── breach? REJECT
+                           ▼
+                      Order Router ── idempotent on (decision, rung)
+                           ▼
+      SimAdapter ─ sim-us · sim-crypto · sim-india   (fills worked in slices)
+                           ▼
+     Ledger · provenance · 3 × guardian · 3 × ladder
+                           ▼
+   Notifier · Dashboard (SSE) · Evaluator · Reflector
 ```
 
 Intelligence decreases and determinism increases as you approach the money. Risk
 limits are code, never an LLM: one that hallucinates a support level costs you a
 mediocre entry; one that hallucinates a position limit costs you the account.
 
-### The six agents
+### The eleven agents
 
 | Agent | Model | What it does |
 |---|---|---|
-| `edgar-poller` | none | Sweeps SEC EDGAR for earnings 8-Ks across the US universe, per-CIK cursor so a filing is read once |
-| `earnings-reader` | sonnet | Reads the EX-99.1 press release, extracts guidance/tone/hedging, scores it against Yahoo consensus |
-| `news-scout` | haiku | One batched triage call over fresh headlines for all 23 symbols — the only alpha source that reaches crypto and India |
+| `edgar-poller` | none | Sweeps SEC EDGAR for earnings 8-Ks, per-CIK cursor so a filing is read once |
+| `earnings-reader` | sonnet | Reads the EX-99.1 release, scores guidance/tone/hedging against Yahoo consensus |
+| `news-scout` | haiku | One batched triage call over fresh headlines for all 23 symbols |
 | `news-trader` | none | Deterministic gate from headline to order |
-| `guardian:sim-us` | none | Stop loss, take profit, trailing stop, time stop |
-| `guardian:sim-crypto` | none | Same, on a book that never closes |
+| `reflector` | haiku | Reads closed trades, records what to do differently — judged on alpha |
+| `guardian:*` ×3 | none | Stop, target, trailing stop, time stop, **and the recorded thesis** |
+| `ladder:*` ×3 | none | Walks staged entries one rung per tick |
 
-Two of the six spend money. Four are arithmetic.
+Three of the eleven spend money. Eight are arithmetic.
+
+### What each entry records
+
+Every decision carries its sources — the filing accession and date, when the
+consensus was fetched, the quote and its timestamp, the news story and publisher.
+Inputs that are weaker than they look (a synthesised spread, a fallback SUE
+basis) are flagged `degraded`, so "which trades were priced off a made-up
+spread" is a query rather than a memory. The dashboard marks those decisions.
+
+Entries are staged rather than sent whole. Conviction decides the shape: a
+high-conviction read takes 70% immediately because waiting costs more than it
+saves; a marginal one probes with 40% and adds only if the market does not
+disagree. Each rung has a price ceiling, and the ladder abandons the remainder
+when price runs past it — a ladder without a ceiling is a slower way to buy a
+breakout at the top.
+
+Exits check the **recorded thesis** before the price rules. A position whose
+reason for existing has been falsified — the next report landed, or a material
+story pointed the other way — is closed on that basis rather than held until it
+happens to hit a stop.
 
 ---
 
@@ -164,15 +208,21 @@ moment you clone it.
 | Crypto | `sim-crypto` | always | 10bp taker |
 | India | `sim-india` | 09:15–15:30 Kolkata | brokerage + STT + exchange + GST + stamp, blended, plus ₹20 flat |
 
-`sim-india` exists and is **not wired to an agent**. India is scouted for news and
-not traded; the boot log says so.
+All three are traded. The simulator is deliberately pessimistic: every fill pays
+the spread, a slippage floor, and a superlinear market-impact term; no fill is
+ever dated at the decision price; and an order above 0.5% of bar volume is worked
+in slices, each priced on the quantity already worked. A simulator that flatters
+you is not a simulator.
 
-The simulator is deliberately pessimistic. Every fill pays the spread, a slippage
-floor, and a superlinear market-impact term, and no fill is ever dated at the
-decision price. A simulator that flatters you is not a simulator.
+The **PDT rule** is enforced on US equities — four same-day round trips in five
+sessions below $25,000 equity and the fourth is refused. It is the only rule in
+the system that can block a sell, so it is scoped to same-day round trips only,
+and never applies to crypto or India.
 
-Exchange **holidays are not modelled** — a holiday looks like a normal session.
-`HOLIDAYS_MODELLED = false` says so in code.
+Exchange **holidays are modelled** for both equity venues through 2027, resolved
+in the exchange's own timezone. The lists are finite and the daemon warns at boot
+once they run out. **Half-days are not modelled** — an early close reads as a full
+session, and `HALF_DAYS_MODELLED = false` says so in code.
 
 ---
 
@@ -180,20 +230,22 @@ Exchange **holidays are not modelled** — a holiday looks like a normal session
 
 Named because a README that only lists what works is a sales page.
 
-- **India is scouted, not traded.** No agent routes to `sim-india`.
-- **No Reflector.** The system does not learn from its own closed trades. The
-  Evaluator measures; nothing feeds the measurement back.
-- **No Filing Reader, Screener, or Earnings Calendar agent.** The universe is a
-  hand-written list of 23 names; nothing anticipates an upcoming report.
-- **No short selling.** A bearish news signal is logged and stood aside from.
-- **Crypto has no alpha source of its own** beyond news. There is no on-chain,
-  funding-rate, or flow signal.
-- **`thesis_break` is written on every decision and never read back.** The exit
-  rules are mechanical and do not check whether the thesis actually broke.
-- **Run-to-run variance is real.** `claude -p` exposes no temperature control; the
-  same filing scored 1.72 and 1.28 on consecutive runs.
-- **No soak test.** Thirty days of wall-clock cannot be compressed, and until it
-  has run there is no track record — only a system that works.
+- **No 30-day soak has run.** This is the last roadmap phase and the only one
+  that cannot be written: it is wall-clock. Until it finishes there is no track
+  record, only a system that works.
+- **No short selling.** A bearish signal is recorded and stood aside from; the
+  venues declare no short support.
+- **Crypto has no alpha source of its own** beyond news — no on-chain, funding
+  rate, or flow signal.
+- **India rarely has tradeable news.** Yahoo's search returns nothing
+  attributable for most NSE symbols, and the scout correctly emits nothing
+  rather than passing on unrelated stories. The venue works; the data is thin.
+- **Half-days and post-2027 holidays are not modelled.**
+- **Run-to-run variance is real.** `claude -p` exposes no temperature control;
+  the same filing scored SUE 1.72 and 1.28 on consecutive runs.
+- **The Reflector's lessons are recorded, not applied.** Nothing yet reads them
+  back to change a threshold — that is a human decision on purpose, and the
+  report ranks categories by the alpha they cost so it is an informed one.
 
 ---
 

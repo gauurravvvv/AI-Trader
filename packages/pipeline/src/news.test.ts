@@ -14,10 +14,19 @@ const UNIVERSE: UniverseEntry[] = [
   { symbol: 'RELIANCE', cik: null, market: 'IN', name: 'Reliance Industries' },
 ];
 
-function story(symbol: string, id: string, title: string): NewsItem {
+/**
+ * `age` is minutes before now, so a fixture controls its own ordering.
+ *
+ * Stamping every story with `new Date()` looked deterministic and was not:
+ * building twenty of them can straddle a millisecond, and `newestFirst` then
+ * reorders them. The test passed alone and failed under full-suite load, which
+ * is the worst way for a fixture to be wrong.
+ */
+function story(symbol: string, id: string, title: string, ageMin = 0): NewsItem {
   return {
     id, symbol, title, publisher: 'Reuters', link: `https://x/${id}`,
-    publishedAt: new Date().toISOString(), relatedTickers: [symbol],
+    publishedAt: new Date(Date.now() - ageMin * 60_000).toISOString(),
+    relatedTickers: [symbol],
   };
 }
 
@@ -147,7 +156,8 @@ describe('NewsScoutAgent', () => {
   });
 
   it('caps the batch so one noisy symbol cannot blow the budget', async () => {
-    const many = Array.from({ length: 40 }, (_, i) => story('NVDA', `n${String(i)}`, `headline ${String(i)}`));
+    const many = Array.from({ length: 40 }, (_, i) =>
+      story('NVDA', `n${String(i)}`, `headline ${String(i)}`, i));
     const ask = vi.fn(reply('{"items":[]}'));
     await new NewsScoutAgent(deps({ news: fakeNews({ NVDA: many }), ask, batchCap: 5 })).execute();
     const prompt = ask.mock.calls[0]![0] as string;
@@ -190,7 +200,8 @@ describe('batch fairness across markets', () => {
     // The first live run capped at 12 and never reached BTC: NVDA and AAPL,
     // being the most written-about, consumed the entire batch.
     const many = (sym: string): NewsItem[] =>
-      Array.from({ length: 20 }, (_, i) => story(sym, `${sym}${String(i)}`, `${sym} headline ${String(i)}`));
+      Array.from({ length: 20 }, (_, i) =>
+        story(sym, `${sym}${String(i)}`, `${sym} headline ${String(i)}`, i));
     const ask = vi.fn(reply('{"items":[]}'));
     await new NewsScoutAgent(deps({
       news: fakeNews({ NVDA: many('NVDA'), BTC: many('BTC'), RELIANCE: many('RELIANCE') }),
@@ -233,5 +244,24 @@ describe('sweep cadence', () => {
 
   it('honours an override', () => {
     expect(new NewsScoutAgent(deps({ intervalMinutes: 5 })).intervalMs).toBe(5 * 60 * 1000);
+  });
+});
+
+describe('ordering determinism', () => {
+  it('sends the newest headline for a symbol first', async () => {
+    // Regression: the fixture used to stamp every story with new Date(), which
+    // straddles a millisecond under load and silently reordered the batch.
+    const ask = vi.fn(reply('{"items":[]}'));
+    await new NewsScoutAgent(deps({
+      news: fakeNews({
+        NVDA: [
+          story('NVDA', 'old', 'NVDA older story', 120),
+          story('NVDA', 'new', 'NVDA newer story', 5),
+        ],
+      }),
+      ask,
+    })).execute();
+    const prompt = ask.mock.calls[0]![0] as string;
+    expect(prompt.indexOf('NVDA newer story')).toBeLessThan(prompt.indexOf('NVDA older story'));
   });
 });

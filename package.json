@@ -12,7 +12,8 @@
     "dev": "node --import tsx apps/daemon/src/main.ts",
     "smoke:news": "pnpm --filter @aegis/daemon smoke:news",
     "report": "pnpm --filter @aegis/daemon report",
-    "smoke:cost": "pnpm --filter @aegis/daemon smoke:cost"
+    "smoke:cost": "pnpm --filter @aegis/daemon smoke:cost",
+    "soak": "scripts/soak.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

@@ -40,3 +40,4 @@ data/
 # tsc -b build artifacts
 *.tsbuildinfo
 dist/
+.soak/
