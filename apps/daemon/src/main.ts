@@ -4,7 +4,12 @@ import { createLogger } from '@aegis/logger';
 import { BudgetGovernor } from '@aegis/budget';
 import { SignalBus, Orchestrator, startHeartbeat, type AgentDeps } from '@aegis/agents';
 import { setConcurrency } from '@aegis/claude';
-import { SimAdapter, US_COSTS, CRYPTO_COSTS, US_CALENDAR, CRYPTO_CALENDAR, type FillEvent } from '@aegis/brokers';
+import {
+  SimAdapter, US_COSTS, CRYPTO_COSTS, IN_COSTS,
+  US_CALENDAR, CRYPTO_CALENDAR, IN_CALENDAR,
+  holidaysCoverYear,
+  type FillEvent,
+} from '@aegis/brokers';
 import { YahooPriceSource, YahooConsensus, YahooNewsSource } from '@aegis/marketdata';
 import { Ledger, Reconciler } from '@aegis/ledger';
 import { OrderRouter, isHalted } from '@aegis/risk';
@@ -18,6 +23,7 @@ import {
   NewsScoutAgent,
   NewsTraderAgent,
   ReflectorAgent,
+  EntryLadderAgent,
   DailySummary,
   universeFor,
   type PipelineDeps,
@@ -86,6 +92,21 @@ const cryptoAdapter = new SimAdapter(
   CRYPTO_CALENDAR,
 );
 
+// India. The full statutory cost stack is material and is modelled rather than
+// waved away: brokerage, STT, exchange charges, GST and stamp duty, plus a flat
+// per-order fee. No Indian broker offers a real paper sandbox, and SEBI's algo
+// framework has required static-IP whitelisting, a registered strategy ID and
+// exchange empanelment since 2026-04-01 — simulating keeps that surface at zero.
+const indiaAdapter = new SimAdapter(
+  'sim-india',
+  'IN',
+  prices,
+  IN_COSTS,
+  process.env.STARTING_CASH_INDIA ?? '500000',
+  { tickSize: '0.05', lotSize: '1', minNotional: '500', supportsFractional: false, supportsShort: false },
+  IN_CALENDAR,
+);
+
 const ledger = new Ledger(db);
 
 // Console transport by default: the system must be fully runnable with no email
@@ -125,9 +146,19 @@ const cryptoRouter = new OrderRouter({
 });
 cryptoRouter.start();
 
+const indiaRouter = new OrderRouter({
+  db,
+  adapter: indiaAdapter,
+  ledger,
+  notify: raise,
+  onFill: onFill(indiaAdapter.venue),
+});
+indiaRouter.start();
+
 const venues: Venue[] = [
   { market: 'US', router, ledger },
   { market: 'CRYPTO', router: cryptoRouter, ledger },
+  { market: 'IN', router: indiaRouter, ledger },
 ];
 
 const reconciler = new Reconciler(ledger, adapter, db);
@@ -195,7 +226,19 @@ orchestrator.register(
 // Reads closed trades and records what to do differently. Alpha-aware: a +8%
 // trade in a +12% market is not a win, and scoring it as one would teach the
 // system to repeat whatever it did in a bull market.
+orchestrator.register(
+  new PositionGuardianAgent({ ...pipelineDeps, ledger, router: indiaRouter }),
+  55_000,
+);
+// Reads closed trades and records what to do differently. Alpha-aware: a +8%
+// trade in a +12% market is not a win, and scoring it as one would teach the
+// system to repeat whatever it did in a bull market.
 orchestrator.register(new ReflectorAgent({ ...pipelineDeps, prices }), 60_000);
+// One ladder per venue. Entries are staged rather than sent whole, so the
+// market gets a chance to disagree between rungs.
+for (const [i, r] of [router, cryptoRouter, indiaRouter].entries()) {
+  orchestrator.register(new EntryLadderAgent({ ...pipelineDeps, prices, router: r }), 65_000 + i * 5_000);
+}
 
 const dashboard = new Dashboard({
   db,
@@ -234,8 +277,14 @@ log.event(
 );
 log.event(
   'daemon',
-  `venues: ${venues.map((v) => `${v.router.venue} (${v.market})`).join(', ')} · India scouted, not traded`,
+  `venues: ${venues.map((v) => `${v.router.venue} (${v.market})`).join(', ')}`,
 );
+if (!holidaysCoverYear(new Date(), 'America/New_York')) {
+  log.warn(
+    'daemon',
+    'the exchange holiday lists do not cover this year — sessions on unlisted holidays will look open',
+  );
+}
 if (isHalted(db)) log.warn('daemon', 'system is HALTED — clear it to resume trading');
 if (autonomy === 'SHADOW') {
   log.warn('daemon', 'SHADOW mode: decisions are logged, no orders placed. Use --autonomy AUTO to trade.');
@@ -271,6 +320,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
     stopReconciler();
     router.stop();
     cryptoRouter.stop();
+    indiaRouter.stop();
     orchestrator.stop();
     db.close();
     log.ok('daemon', 'clean shutdown');

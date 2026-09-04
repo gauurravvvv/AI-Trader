@@ -13,7 +13,8 @@ export type RejectCode =
   | 'MARKET_CLOSED'
   | 'DUPLICATE'
   | 'INSUFFICIENT_CASH'
-  | 'NO_QUOTE';
+  | 'NO_QUOTE'
+  | 'PATTERN_DAY_TRADER';
 
 export interface RiskLimits {
   maxPositionPct: number; // of equity
@@ -24,6 +25,17 @@ export interface RiskLimits {
   maxAdvParticipation: number; // order qty / average daily volume
   minNotional: string;
   blocklist: readonly string[];
+  /**
+   * FINRA marks an account a pattern day trader at four day trades in five
+   * business days, and then requires $25,000 to keep day trading. Below that
+   * equity the fourth trade is refused rather than taken.
+   *
+   * Modelled in paper because the constraint shapes the strategy: a system
+   * that learns to scalp on a simulator with no PDT rule has learned something
+   * it could never do with the account it is being built for.
+   */
+  pdtEquityFloor: string;
+  pdtMaxDayTrades: number;
 }
 
 export const DEFAULT_LIMITS: RiskLimits = {
@@ -35,6 +47,8 @@ export const DEFAULT_LIMITS: RiskLimits = {
   maxAdvParticipation: 0.01,
   minNotional: '100',
   blocklist: [],
+  pdtEquityFloor: '25000',
+  pdtMaxDayTrades: 3,
 };
 
 export interface RiskContext {
@@ -52,6 +66,15 @@ export interface RiskContext {
   adv: string | null;
   /** An identical symbol+side order submitted within the dedupe window. */
   duplicateRecent: boolean;
+  /** Round trips closed within the same session, last five business days. */
+  dayTradesLast5Days: number;
+  /**
+   * True when this order would close a position opened today — i.e. it is
+   * itself a day trade. Only meaningful for sells.
+   */
+  wouldBeDayTrade: boolean;
+  /** PDT applies to margin equity accounts, not crypto and not India. */
+  pdtApplies: boolean;
 }
 
 export interface ProposedOrder {
@@ -120,7 +143,25 @@ export function evaluate(
   add('qty', qty.gt(0), `qty ${qty.toString()}`, 'MIN_NOTIONAL');
 
   if (isExit) {
-    // Reducing exposure is always permitted once the above pass.
+    // Reducing exposure is always permitted once the above pass — with one
+    // exception, and it is a legal one rather than a risk one: closing a
+    // position opened today is itself a day trade, and under the PDT rule an
+    // undercapitalised account may not make a fourth one. Blocking an exit is
+    // otherwise something this system never does, so it is gated tightly:
+    // only on a same-day round trip, only below the equity floor, only when
+    // the count is already at the limit.
+    if (ctx.pdtApplies && ctx.wouldBeDayTrade) {
+      const under = equity.lt(limits.pdtEquityFloor);
+      const atLimit = ctx.dayTradesLast5Days >= limits.pdtMaxDayTrades;
+      add(
+        'pattern_day_trader',
+        !(under && atLimit),
+        under && atLimit
+          ? `${String(ctx.dayTradesLast5Days)} day trades in 5 sessions with equity ${equity.toFixed(2)} below ${limits.pdtEquityFloor}`
+          : `${String(ctx.dayTradesLast5Days)} day trades, equity ${equity.toFixed(2)}`,
+        'PATTERN_DAY_TRADER',
+      );
+    }
     return { passed: reject.length === 0, checks, rejectReasons: [...new Set(reject)] };
   }
 

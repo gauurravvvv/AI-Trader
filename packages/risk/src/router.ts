@@ -108,7 +108,43 @@ export class OrderRouter {
     this.unsub = null;
   }
 
-  async buildContext(): Promise<Omit<RiskContext, 'adv' | 'duplicateRecent'>> {
+  /**
+   * Round trips opened and closed on the same day, over the last five sessions.
+   *
+   * Counted from fills rather than positions, because a position that was
+   * opened and closed twice in a week is two day trades and the position row
+   * only remembers the last one.
+   */
+  dayTradesLast5Days(): number {
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) c FROM (
+           SELECT date(f.filled_at) d, o.symbol
+             FROM fills f JOIN orders o ON o.id = f.order_id
+            WHERE o.venue = ? AND date(f.filled_at) >= date('now', '-7 days')
+            GROUP BY date(f.filled_at), o.symbol
+           HAVING SUM(CASE WHEN o.side = 'buy' THEN 1 ELSE 0 END) > 0
+              AND SUM(CASE WHEN o.side = 'sell' THEN 1 ELSE 0 END) > 0
+         )`,
+      )
+      .get(this.adapter.venue) as { c: number };
+    return r.c;
+  }
+
+  /** Would this sell close something bought today? */
+  private wouldBeDayTrade(symbol: string, side: 'buy' | 'sell'): boolean {
+    if (side !== 'sell') return false;
+    const r = this.db
+      .prepare(
+        `SELECT COUNT(*) c FROM fills f JOIN orders o ON o.id = f.order_id
+          WHERE o.venue = ? AND o.symbol = ? AND o.side = 'buy'
+            AND date(f.filled_at) = date('now')`,
+      )
+      .get(this.adapter.venue, symbol) as { c: number };
+    return r.c > 0;
+  }
+
+  async buildContext(): Promise<Omit<RiskContext, 'adv' | 'duplicateRecent' | 'wouldBeDayTrade'>> {
     const acct = await this.adapter.getAccount();
     const open = this.ledger.open(this.adapter.venue);
     let gross = new Decimal(0);
@@ -126,6 +162,10 @@ export class OrderRouter {
       marketExposure: gross.toFixed(2), // one venue per market in v1
       openPositions: this.ledger.openCount(this.adapter.venue),
       realisedPnlToday: this.ledger.realisedToday(this.adapter.venue),
+      dayTradesLast5Days: this.dayTradesLast5Days(),
+      // PDT is a US margin-equity rule. Crypto and India are not subject to it,
+      // and applying it there would invent a constraint that does not exist.
+      pdtApplies: this.adapter.market === 'US',
     };
   }
 
@@ -163,6 +203,7 @@ export class OrderRouter {
       ...base,
       adv,
       duplicateRecent: this.recentDuplicate(req.decisionId, req.symbol, req.side),
+      wouldBeDayTrade: this.wouldBeDayTrade(req.symbol, req.side),
     };
 
     let qty = req.qty;

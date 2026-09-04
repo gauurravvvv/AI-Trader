@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { US_CALENDAR, IN_CALENDAR, CRYPTO_CALENDAR, zonedParts } from './calendars.js';
+import {
+  US_CALENDAR, IN_CALENDAR, CRYPTO_CALENDAR, zonedParts, zonedDate,
+  holidaysCoverYear, HALF_DAYS_MODELLED,
+} from './calendars.js';
 
 // 2026-09-04 is a Friday; 2026-09-05 a Saturday.
 const at = (iso: string): Date => new Date(iso);
@@ -64,5 +67,53 @@ describe('CRYPTO_CALENDAR', () => {
     ]) {
       expect(CRYPTO_CALENDAR.isOpen(at(iso))).toBe(true);
     }
+  });
+});
+
+describe('holidays', () => {
+  it('closes the US market on Independence Day', () => {
+    // 2026-07-03 (observed). 14:00 UTC is mid-session on a normal Friday.
+    expect(US_CALENDAR.isOpen(at('2026-07-03T14:00:00Z'))).toBe(false);
+    expect(US_CALENDAR.isOpen(at('2026-07-02T14:00:00Z'))).toBe(true);
+  });
+
+  it('closes the US market on Thanksgiving and Christmas', () => {
+    expect(US_CALENDAR.isOpen(at('2026-11-26T15:00:00Z'))).toBe(false);
+    expect(US_CALENDAR.isOpen(at('2026-12-25T15:00:00Z'))).toBe(false);
+  });
+
+  it('closes NSE on Republic Day and Independence Day', () => {
+    // 05:00 UTC = 10:30 IST, mid-session.
+    expect(IN_CALENDAR.isOpen(at('2026-01-26T05:00:00Z'))).toBe(false);
+    expect(IN_CALENDAR.isOpen(at('2026-08-15T05:00:00Z'))).toBe(false);
+  });
+
+  it('does not apply one exchange’s holidays to the other', () => {
+    // 2026-01-26 is a normal Monday in New York.
+    expect(US_CALENDAR.isOpen(at('2026-01-26T15:00:00Z'))).toBe(true);
+    // 2026-11-26 (US Thanksgiving) is a normal Thursday in Mumbai.
+    expect(IN_CALENDAR.isOpen(at('2026-11-26T05:00:00Z'))).toBe(true);
+  });
+
+  it('leaves crypto open on every holiday', () => {
+    expect(CRYPTO_CALENDAR.isOpen(at('2026-12-25T15:00:00Z'))).toBe(true);
+  });
+
+  it('resolves the date in the exchange zone, not the local one', () => {
+    // 2026-01-25 23:00 UTC is already 2026-01-26 in Kolkata.
+    expect(zonedDate(at('2026-01-25T23:00:00Z'), 'Asia/Kolkata')).toBe('2026-01-26');
+    expect(zonedDate(at('2026-01-25T23:00:00Z'), 'America/New_York')).toBe('2026-01-25');
+  });
+
+  it('admits when a year is beyond the maintained list', () => {
+    // The data is finite. Saying so beats silently trading on Christmas 2029.
+    expect(holidaysCoverYear(at('2027-06-01T00:00:00Z'), 'America/New_York')).toBe(true);
+    expect(holidaysCoverYear(at('2029-06-01T00:00:00Z'), 'America/New_York')).toBe(false);
+  });
+
+  it('does not model half-days', () => {
+    // 2026-11-27 is a 13:00 early close; 18:30 UTC is 13:30 ET, after it.
+    expect(HALF_DAYS_MODELLED).toBe(false);
+    expect(US_CALENDAR.isOpen(at('2026-11-27T18:30:00Z'))).toBe(true);
   });
 });

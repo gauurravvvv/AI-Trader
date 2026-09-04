@@ -18,3 +18,5 @@ export { evaluateWatch, readConditions, driftConditions, newsConditions, newFili
 export type { WatchCondition, WatchContext, WatchBreak } from './watch.js';
 export { ReflectorAgent, classify, groupLessons, LessonSchema } from './reflector.js';
 export type { Verdict, Outcome, Lesson, LessonGroup, ReflectorDeps } from './reflector.js';
+export { EntryLadderAgent, planEntry, savePlan, activePlans, nextRung, markRungPlaced, abandonPlan } from './planner.js';
+export type { Rung, EntryPlan, PlanRow } from './planner.js';

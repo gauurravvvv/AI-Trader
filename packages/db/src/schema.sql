@@ -198,3 +198,25 @@ CREATE TABLE IF NOT EXISTS lessons (
   UNIQUE (decision_id)                      -- one lesson per trade, idempotent
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_category ON lessons (category, created_at DESC);
+
+-- A staged entry, walked one rung per tick by the ladder agent.
+--
+-- Separate from `orders` because a planned rung is not an order: it may never
+-- be placed. Rungs are abandoned when price runs past the band the plan was
+-- built for, which is the entire point of laddering rather than sending the
+-- whole size at once.
+CREATE TABLE IF NOT EXISTS execution_plans (
+  id INTEGER PRIMARY KEY,
+  decision_id INTEGER NOT NULL REFERENCES decisions(id),
+  venue TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  side TEXT NOT NULL,
+  rungs TEXT NOT NULL,                      -- JSON array of {index, qty, maxPrice}
+  placed_rungs TEXT NOT NULL DEFAULT '[]',  -- JSON array of indices already sent
+  status TEXT NOT NULL DEFAULT 'ACTIVE',    -- ACTIVE|COMPLETE|ABANDONED
+  abandon_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (decision_id)
+);
+CREATE INDEX IF NOT EXISTS idx_plans_active ON execution_plans (status, venue);

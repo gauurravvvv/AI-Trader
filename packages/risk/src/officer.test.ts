@@ -17,6 +17,9 @@ const ctx = (over: Partial<RiskContext> = {}): RiskContext => ({
   marketExposure: '0',
   openPositions: 0,
   realisedPnlToday: '0',
+  dayTradesLast5Days: 0,
+  wouldBeDayTrade: false,
+  pdtApplies: true,
   adv: '1000000',
   duplicateRecent: false,
   ...over,
@@ -189,5 +192,45 @@ describe('maxPermittedQty', () => {
       const r = evaluate(buy({ qty: q, price: '100' }), c);
       expect(r.rejectReasons.filter((x) => x !== 'MIN_NOTIONAL')).toEqual([]);
     }
+  });
+});
+
+describe('pattern day trader rule', () => {
+  const sell: ProposedOrder = { symbol: 'NVDA', side: 'sell', qty: '10', price: '100' };
+
+  it('lets an ordinary exit through — this is the one gate that can stop a sell', () => {
+    const r = evaluate(sell, ctx({ equity: '10000', wouldBeDayTrade: false, dayTradesLast5Days: 9 }));
+    expect(r.passed).toBe(true);
+  });
+
+  it('blocks a fourth same-day round trip on an undercapitalised account', () => {
+    const r = evaluate(sell, ctx({ equity: '10000', wouldBeDayTrade: true, dayTradesLast5Days: 3 }));
+    expect(r.passed).toBe(false);
+    expect(r.rejectReasons).toContain('PATTERN_DAY_TRADER');
+  });
+
+  it('allows the third — the limit is four in five sessions', () => {
+    const r = evaluate(sell, ctx({ equity: '10000', wouldBeDayTrade: true, dayTradesLast5Days: 2 }));
+    expect(r.passed).toBe(true);
+  });
+
+  it('does not apply above the equity floor', () => {
+    const r = evaluate(sell, ctx({ equity: '30000', wouldBeDayTrade: true, dayTradesLast5Days: 9 }));
+    expect(r.passed).toBe(true);
+  });
+
+  it('does not apply to crypto or India', () => {
+    // PDT is a US margin-equity rule. Applying it elsewhere would invent a
+    // constraint that does not exist and quietly trap a position.
+    const r = evaluate(sell, ctx({
+      equity: '1000', wouldBeDayTrade: true, dayTradesLast5Days: 99, pdtApplies: false,
+    }));
+    expect(r.passed).toBe(true);
+  });
+
+  it('never blocks a buy — PDT is about closing, not opening', () => {
+    const buy: ProposedOrder = { symbol: 'NVDA', side: 'buy', qty: '10', price: '100' };
+    const r = evaluate(buy, ctx({ equity: '10000', wouldBeDayTrade: true, dayTradesLast5Days: 99 }));
+    expect(r.rejectReasons).not.toContain('PATTERN_DAY_TRADER');
   });
 });

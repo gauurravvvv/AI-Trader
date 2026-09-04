@@ -253,3 +253,39 @@ describe('notifications', () => {
     expect(out.ok).toBe(true);
   });
 });
+
+describe('day-trade counting', () => {
+  async function buyThenSell(symbol: string): Promise<void> {
+    await router.route(
+      { decisionId: newDecision(symbol), symbol, side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    await new Promise((r) => setTimeout(r, 40));
+    await router.route(
+      { decisionId: newDecision(symbol, 'sell'), symbol, side: 'sell', qty: '20', price: '100' },
+      '1000000',
+    );
+    await new Promise((r) => setTimeout(r, 40));
+  }
+
+  it('counts a same-day round trip as one day trade', async () => {
+    expect(router.dayTradesLast5Days()).toBe(0);
+    await buyThenSell('NVDA');
+    expect(router.dayTradesLast5Days()).toBe(1);
+  });
+
+  it('counts each symbol separately', async () => {
+    await buyThenSell('NVDA');
+    await buyThenSell('AMD');
+    expect(router.dayTradesLast5Days()).toBe(2);
+  });
+
+  it('does not count a buy with no matching sell', async () => {
+    await router.route(
+      { decisionId: newDecision(), symbol: 'NVDA', side: 'buy', qty: '20', price: '100' },
+      '1000000',
+    );
+    await new Promise((r) => setTimeout(r, 40));
+    expect(router.dayTradesLast5Days()).toBe(0);
+  });
+});

@@ -303,3 +303,48 @@ describe('EarningsReaderAgent', () => {
     expect(scored[0]!.confidence).toBe(90);
   });
 });
+
+describe('staged entry', () => {
+  it('records a plan and places only the first rung', async () => {
+    await runFullCycle();
+    const plan = db.prepare('SELECT * FROM execution_plans').get() as
+      { rungs: string; placed_rungs: string; status: string; symbol: string };
+    expect(plan.symbol).toBe('NVDA');
+    const rungs = JSON.parse(plan.rungs) as { index: number }[];
+    expect(rungs.length).toBeGreaterThan(1);
+    expect(JSON.parse(plan.placed_rungs)).toEqual([0]);
+    expect(plan.status).toBe('ACTIVE');
+    // Exactly one order so far: the rest is the ladder agent's job.
+    expect(db.prepare('SELECT COUNT(*) c FROM orders').get()).toEqual({ c: 1 });
+  });
+
+  it('takes most of the size at once when the audit score is high', async () => {
+    await runFullCycle({ ask: scriptedAsk([STRONG_READ, audit(90)]).ask });
+    const rungs = JSON.parse(
+      (db.prepare('SELECT rungs FROM execution_plans').get() as { rungs: string }).rungs,
+    ) as { qty: string }[];
+    expect(rungs).toHaveLength(2);
+  });
+
+  it('probes first when the audit score only just clears the floor', async () => {
+    await runFullCycle({ ask: scriptedAsk([STRONG_READ, audit(70)]).ask });
+    const rungs = JSON.parse(
+      (db.prepare('SELECT rungs FROM execution_plans').get() as { rungs: string }).rungs,
+    ) as { qty: string }[];
+    expect(rungs).toHaveLength(3);
+  });
+
+  it('plans nothing in SHADOW mode — there is no entry to stage', async () => {
+    await runFullCycle({ autonomy: 'SHADOW' });
+    expect(db.prepare('SELECT COUNT(*) c FROM execution_plans').get()).toEqual({ c: 0 });
+  });
+
+  it('abandons the plan when the Risk Officer refuses the first rung', async () => {
+    db.prepare(`UPDATE system_state SET halted = 1 WHERE id = 1`).run();
+    await runFullCycle();
+    const plan = db.prepare('SELECT status, abandon_reason FROM execution_plans').get() as
+      { status: string; abandon_reason: string };
+    expect(plan.status).toBe('ABANDONED');
+    expect(plan.abandon_reason).toContain('HALTED');
+  });
+});

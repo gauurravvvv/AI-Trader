@@ -10,4 +10,8 @@ export type {
 // './conformance.js' directly.
 export { SimAdapter, US_COSTS, IN_COSTS, CRYPTO_COSTS } from './sim.js';
 export type { PriceSource, SimCosts } from './sim.js';
-export { US_CALENDAR, IN_CALENDAR, CRYPTO_CALENDAR, zonedParts, HOLIDAYS_MODELLED } from './calendars.js';
+export {
+  US_CALENDAR, IN_CALENDAR, CRYPTO_CALENDAR, zonedParts, zonedDate,
+  isHoliday, holidaysCoverYear, US_HOLIDAYS, IN_HOLIDAYS,
+  HOLIDAYS_THROUGH_YEAR, HALF_DAYS_MODELLED,
+} from './calendars.js';

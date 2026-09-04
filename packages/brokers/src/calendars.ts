@@ -25,21 +25,92 @@ export function zonedParts(at: Date, timeZone: string): { weekday: number; minut
   };
 }
 
-function weekdaySession(timeZone: string, openMin: number, closeMin: number): SessionCalendar {
+/**
+ * Full-day exchange closures, as ISO dates in the exchange's own timezone.
+ *
+ * Hand-maintained and therefore finite: these run to the end of 2027 and the
+ * calendar says so rather than silently treating an unlisted year as open.
+ * Half-days (early closes) are NOT modelled — trading into a 13:00 close is
+ * treated as a normal session.
+ */
+export const US_HOLIDAYS: ReadonlySet<string> = new Set([
+  // 2026
+  '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25',
+  '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+  // 2027
+  '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
+  '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24',
+]);
+
+/** NSE/BSE full-day closures. Same caveats as US_HOLIDAYS. */
+export const IN_HOLIDAYS: ReadonlySet<string> = new Set([
+  // 2026
+  '2026-01-26', '2026-03-03', '2026-03-19', '2026-04-03', '2026-04-14',
+  '2026-05-01', '2026-08-15', '2026-08-28', '2026-10-02', '2026-10-21',
+  '2026-11-09', '2026-12-25',
+  // 2027
+  '2027-01-26', '2027-03-22', '2027-04-01', '2027-04-14', '2027-05-01',
+  '2027-08-15', '2027-10-02', '2027-11-09', '2027-12-25',
+]);
+
+/** Last year each holiday list covers. Beyond this the data is absent, not empty. */
+export const HOLIDAYS_THROUGH_YEAR = 2027;
+
+/** ISO date (YYYY-MM-DD) in the given zone. */
+export function zonedDate(at: Date, timeZone: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts['year'] ?? ''}-${parts['month'] ?? ''}-${parts['day'] ?? ''}`;
+}
+
+/**
+ * True when the date is a known closure.
+ *
+ * Beyond the maintained range this returns false, which means the calendar will
+ * treat an unlisted 2028 holiday as a normal session. `holidaysCoverYear` exists
+ * so a caller can warn rather than quietly trading on Christmas Day 2028.
+ */
+export function isHoliday(at: Date, timeZone: string, holidays: ReadonlySet<string>): boolean {
+  return holidays.has(zonedDate(at, timeZone));
+}
+
+export function holidaysCoverYear(at: Date, timeZone: string): boolean {
+  return Number(zonedDate(at, timeZone).slice(0, 4)) <= HOLIDAYS_THROUGH_YEAR;
+}
+
+/** Half-days are not modelled: an early close reads as a full session. */
+export const HALF_DAYS_MODELLED = false;
+
+function weekdaySession(
+  timeZone: string,
+  openMin: number,
+  closeMin: number,
+  holidays: ReadonlySet<string>,
+): SessionCalendar {
   return {
     isOpen(at: Date): boolean {
       const { weekday, minutes } = zonedParts(at, timeZone);
       if (weekday === 0 || weekday === 6) return false;
+      if (isHoliday(at, timeZone, holidays)) return false;
       return minutes >= openMin && minutes < closeMin;
     },
   };
 }
 
 /** US equities regular session: 09:30–16:00 America/New_York, weekdays. */
-export const US_CALENDAR: SessionCalendar = weekdaySession('America/New_York', 9 * 60 + 30, 16 * 60);
+export const US_CALENDAR: SessionCalendar = weekdaySession(
+  'America/New_York', 9 * 60 + 30, 16 * 60, US_HOLIDAYS,
+);
 
 /** NSE/BSE regular session: 09:15–15:30 Asia/Kolkata, weekdays. */
-export const IN_CALENDAR: SessionCalendar = weekdaySession('Asia/Kolkata', 9 * 60 + 15, 15 * 60 + 30);
+export const IN_CALENDAR: SessionCalendar = weekdaySession(
+  'Asia/Kolkata', 9 * 60 + 15, 15 * 60 + 30, IN_HOLIDAYS,
+);
 
 /**
  * Crypto never closes.
@@ -51,9 +122,3 @@ export const IN_CALENDAR: SessionCalendar = weekdaySession('Asia/Kolkata', 9 * 6
  */
 export const CRYPTO_CALENDAR: SessionCalendar = { isOpen: () => true };
 
-/**
- * Exchange holidays are NOT modelled. A holiday looks like a normal session to
- * this calendar, so the simulator will happily fill an order on a day the real
- * exchange was shut. Paper trading absorbs that; a live adapter must not.
- */
-export const HOLIDAYS_MODELLED = false;

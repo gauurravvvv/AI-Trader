@@ -9,6 +9,7 @@ import { readEarnings, scoreSue } from '@aegis/alpha';
 import type { OrderRouter } from '@aegis/risk';
 import { auditDecision } from './auditor.js';
 import { driftConditions } from './watch.js';
+import { planEntry, savePlan, markRungPlaced, abandonPlan } from './planner.js';
 import { DRIFT_EXIT } from './guardian.js';
 import { edgarWatchable, type UniverseEntry } from './universe.js';
 
@@ -256,16 +257,43 @@ export class EarningsReaderAgent extends BaseAgent {
         ? String(Math.round(advBars.reduce((a, b) => a + b.v, 0) / advBars.length))
         : null;
 
+    // Stage the entry. Conviction decides the shape: a strong read takes most
+    // of the size now because waiting costs more than it saves, a marginal one
+    // probes first. The first rung goes immediately — waiting a full ladder
+    // tick to start would give up the surprise this whole pipeline exists to
+    // catch — and the ladder agent walks the rest.
+    const plan = planEntry(qty.toString(), quote.last, auditScore);
+    const first = plan.rungs[0];
+    if (first === undefined) {
+      this.log.warn('order-router', `${symbol}: plan produced no rungs`);
+      return;
+    }
+    savePlan(this.db, decisionId, this.p.router.venue, symbol, 'buy', plan);
+    this.log.event(
+      'execution-planner',
+      `${symbol}  ${String(plan.rungs.length)} rung(s) — ${plan.rationale}`,
+    );
+
     const res = await this.p.router.route(
-      { decisionId, symbol, side: 'buy', qty: qty.toString(), price: quote.last, allowResize: true },
+      {
+        decisionId,
+        rungIndex: first.index,
+        symbol,
+        side: 'buy',
+        qty: first.qty,
+        price: quote.last,
+        allowResize: true,
+      },
       adv,
     );
     if (res.ok) {
+      markRungPlaced(this.db, decisionId, first.index);
       this.log.ok(
         'order-router',
-        `${symbol} BUY ${res.qty} @ ~${Number(quote.last).toFixed(2)}${res.resized ? ' (resized)' : ''} → order ${String(res.orderId)}`,
+        `${symbol} BUY ${res.qty} @ ~${Number(quote.last).toFixed(2)}${res.resized ? ' (resized)' : ''} → order ${String(res.orderId)} (rung 1 of ${String(plan.rungs.length)})`,
       );
     } else {
+      abandonPlan(this.db, decisionId, res.reason);
       this.log.warn('order-router', `${symbol} rejected: ${res.reason}`);
     }
   }
